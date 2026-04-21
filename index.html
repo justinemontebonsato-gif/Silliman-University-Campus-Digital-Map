@@ -1,0 +1,1832 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>SU Navigate — Silliman University Campus Map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=Playfair+Display:wght@600&display=swap" rel="stylesheet">
+
+<!-- ═══════════════════════════════════════════════
+     LEAFLET.JS  —  FREE, NO API KEY NEEDED
+     Loaded from cdnjs (a public CDN, always free)
+     ═══════════════════════════════════════════════ -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+
+<style>
+  /* ════════════════════════════════
+     DESIGN TOKENS  (Silliman brand)
+     ════════════════════════════════ */
+  :root {
+    --su-green:       #1B4D2E;
+    --su-green-light: #2E7D4F;
+    --su-green-pale:  #EAF3EE;
+    --su-gold:        #C8922A;
+    --su-gold-light:  #FDF3E3;
+    --white:          #FFFFFF;
+    --gray-50:        #F8F9FA;
+    --gray-100:       #F1F3F5;
+    --gray-200:       #E9ECEF;
+    --gray-300:       #DEE2E6;
+    --gray-500:       #ADB5BD;
+    --gray-600:       #6C757D;
+    --gray-700:       #495057;
+    --gray-900:       #212529;
+    --shadow-sm:  0 1px 3px rgba(0,0,0,.08),0 1px 2px rgba(0,0,0,.04);
+    --shadow-md:  0 4px 12px rgba(0,0,0,.10),0 2px 4px rgba(0,0,0,.06);
+    --shadow-lg:  0 8px 24px rgba(0,0,0,.12),0 4px 8px rgba(0,0,0,.06);
+    --r-sm: 8px; --r-md: 12px; --r-lg: 16px; --r-xl: 24px;
+    --panel-w: 360px;
+    /* Mobile safe areas */
+    --nav-h: 64px;
+    --topbar-h: 64px;
+  }
+
+  *, *::before, *::after {
+    margin: 0; padding: 0;
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html { height: 100%; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--gray-100);
+    height: 100vh; height: 100dvh;
+    overflow: hidden;
+    color: var(--gray-900);
+    /* Prevent font scaling on iOS rotation */
+    -webkit-text-size-adjust: 100%;
+  }
+
+  /* ══════════ MAP ══════════ */
+  #map-container { position: absolute; inset: 0; }
+  #map { width: 100%; height: 100%; }
+  .leaflet-popup-content-wrapper { display: none; }
+
+  /* ══════════ TOP BAR ══════════ */
+  #topbar {
+    position: absolute; top: 0; left: 0; right: 0;
+    z-index: 1000;
+    padding: 12px 12px 0;
+    display: flex; gap: 8px; align-items: center;
+    pointer-events: none;
+  }
+  #topbar > * { pointer-events: all; }
+
+  #logo-pill {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--su-green); color: white;
+    padding: 10px 14px;
+    border-radius: var(--r-md);
+    box-shadow: var(--shadow-md);
+    white-space: nowrap; flex-shrink: 0;
+    min-height: 44px; /* Touch target */
+  }
+  #logo-pill svg { width: 18px; height: 18px; flex-shrink: 0; }
+  #logo-pill span { font-family: 'Playfair Display', serif; font-size: 15px; font-weight: 600; letter-spacing: .01em; }
+  #logo-pill small { font-family: 'DM Sans', sans-serif; font-size: 10px; font-weight: 300; opacity: .75; display: block; margin-top: 1px; }
+
+  #search-bar { flex: 1; position: relative; min-width: 0; }
+  #search-input {
+    width: 100%; padding: 11px 44px 11px 42px;
+    border: none; border-radius: var(--r-md);
+    font-size: 16px; /* 16px prevents iOS auto-zoom */
+    font-family: 'DM Sans', sans-serif;
+    background: white; box-shadow: var(--shadow-md);
+    outline: none; color: var(--gray-900);
+    min-height: 44px; /* Touch target */
+    -webkit-appearance: none;
+  }
+  #search-icon { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); color: var(--su-green); pointer-events: none; }
+  #search-clear {
+    position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+    background: none; border: none; cursor: pointer;
+    color: var(--gray-500); padding: 8px; display: none;
+    border-radius: 50%; transition: background .15s;
+    min-width: 36px; min-height: 36px;
+    display: none; align-items: center; justify-content: center;
+  }
+  #search-clear:hover { background: var(--gray-100); }
+
+  #search-results {
+    position: absolute; top: calc(100% + 6px); left: 0; right: 0;
+    background: white; border-radius: var(--r-md);
+    box-shadow: var(--shadow-lg); overflow: hidden;
+    display: none; max-height: 60vmax; overflow-y: auto; z-index: 200;
+  }
+  .search-result-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 14px; cursor: pointer;
+    transition: background .15s; border-bottom: 1px solid var(--gray-100);
+    min-height: 52px; /* Comfortable touch target */
+  }
+  .search-result-item:last-child { border-bottom: none; }
+  .search-result-item:active { background: var(--su-green-pale); }
+  @media (hover: hover) { .search-result-item:hover { background: var(--su-green-pale); } }
+  .result-icon { width: 36px; height: 36px; border-radius: var(--r-sm); display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 16px; }
+  .result-info { flex: 1; min-width: 0; }
+  .result-name { font-size: 14px; font-weight: 500; color: var(--gray-900); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .result-type { font-size: 12px; color: var(--gray-600); margin-top: 2px; }
+
+  /* ══════════ SIDE PANEL (Desktop) ══════════ */
+  #side-panel {
+    position: absolute; left: 12px; top: 78px; bottom: 12px;
+    width: var(--panel-w); z-index: 900;
+    display: flex; flex-direction: column; gap: 10px;
+    overflow-y: auto; pointer-events: none;
+  }
+  #side-panel > * { pointer-events: all; }
+
+  .panel-card { background: white; border-radius: var(--r-lg); box-shadow: var(--shadow-md); overflow: hidden; }
+
+  #category-scroll { padding: 12px; display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; }
+  #category-scroll::-webkit-scrollbar { display: none; }
+
+  .chip {
+    display: flex; align-items: center; gap: 6px;
+    padding: 8px 14px; border-radius: 100px;
+    font-size: 13px; font-weight: 500; cursor: pointer;
+    white-space: nowrap; border: 1.5px solid var(--gray-200);
+    background: white; color: var(--gray-700);
+    transition: all .15s; font-family: 'DM Sans', sans-serif;
+    min-height: 38px; /* Touch-friendly */
+  }
+  .chip:active { border-color: var(--su-green); color: var(--su-green); }
+  @media (hover: hover) { .chip:hover { border-color: var(--su-green); color: var(--su-green); } }
+  .chip.active { background: var(--su-green); border-color: var(--su-green); color: white; }
+  .chip-icon { font-size: 14px; }
+
+  #locations-panel { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+  #locations-header { padding: 14px 16px 10px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--gray-100); }
+  #locations-header h2 { font-family: 'Playfair Display', serif; font-size: 15px; color: var(--su-green); font-weight: 600; }
+  #location-count { font-size: 11px; color: var(--gray-500); }
+  #locations-list { overflow-y: auto; flex: 1; }
+
+  .location-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 16px; cursor: pointer;
+    transition: background .15s; border-bottom: 1px solid var(--gray-50);
+    min-height: 56px;
+  }
+  .location-item:active { background: var(--su-green-pale); }
+  @media (hover: hover) { .location-item:hover { background: var(--su-green-pale); } }
+  .location-item.active { background: var(--su-green-pale); border-left: 3px solid var(--su-green); }
+  .loc-icon { width: 40px; height: 40px; border-radius: var(--r-sm); display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+  .loc-info { flex: 1; min-width: 0; }
+  .loc-name { font-size: 13px; font-weight: 500; color: var(--gray-900); }
+  .loc-desc { font-size: 11px; color: var(--gray-600); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .loc-go-btn {
+    width: 36px; height: 36px; background: var(--su-green-pale); border: none;
+    border-radius: var(--r-sm); cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; transition: background .15s;
+  }
+  .loc-go-btn:active { background: var(--su-green); }
+  .loc-go-btn:active svg { stroke: white; }
+  @media (hover: hover) {
+    .loc-go-btn:hover { background: var(--su-green); }
+    .loc-go-btn:hover svg { stroke: white; }
+  }
+  .loc-go-btn svg { stroke: var(--su-green); }
+
+  /* ══════════ DETAIL PANEL ══════════ */
+  #detail-panel {
+    position: absolute; left: 12px; bottom: 12px;
+    width: var(--panel-w); z-index: 950;
+    background: white; border-radius: var(--r-lg);
+    box-shadow: var(--shadow-lg); overflow: hidden;
+    display: none; transform: translateY(20px); opacity: 0;
+    transition: transform .25s ease, opacity .25s ease;
+  }
+  #detail-panel.visible { display: block; transform: translateY(0); opacity: 1; }
+  .detail-header { background: var(--su-green); padding: 16px; color: white; display: flex; align-items: flex-start; gap: 12px; }
+  .detail-icon { font-size: 28px; line-height: 1; flex-shrink: 0; }
+  .detail-title-wrap { flex: 1; min-width: 0; }
+  .detail-title { font-family: 'Playfair Display', serif; font-size: 17px; font-weight: 600; line-height: 1.3; }
+  .detail-subtitle { font-size: 12px; opacity: .8; margin-top: 3px; }
+  #detail-close {
+    background: rgba(255,255,255,.15); border: none; color: white;
+    width: 36px; height: 36px; border-radius: var(--r-sm); cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; flex-shrink: 0; transition: background .15s;
+  }
+  #detail-close:active { background: rgba(255,255,255,.3); }
+  @media (hover: hover) { #detail-close:hover { background: rgba(255,255,255,.25); } }
+  .detail-body { padding: 14px 16px; }
+  .detail-desc { font-size: 13px; color: var(--gray-700); line-height: 1.6; margin-bottom: 14px; }
+  .detail-meta { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+  .detail-meta-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--gray-600); }
+  .detail-meta-row svg { width: 14px; height: 14px; stroke: var(--su-green); flex-shrink: 0; }
+  .detail-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .btn-directions {
+    padding: 12px 0; background: var(--su-green); color: white; border: none;
+    border-radius: var(--r-sm); font-size: 13px; font-family: 'DM Sans', sans-serif;
+    font-weight: 500; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    transition: background .2s; min-height: 44px;
+  }
+  .btn-directions:active { background: var(--su-green-light); }
+  @media (hover: hover) { .btn-directions:hover { background: var(--su-green-light); } }
+  .btn-share {
+    padding: 12px 0; background: var(--su-gold-light); color: var(--su-gold);
+    border: 1.5px solid #e8c97a; border-radius: var(--r-sm);
+    font-size: 13px; font-family: 'DM Sans', sans-serif; font-weight: 500;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    gap: 6px; transition: background .2s; min-height: 44px;
+  }
+  .btn-share:active { background: #faecc8; }
+  @media (hover: hover) { .btn-share:hover { background: #faecc8; } }
+
+  /* ══════════ DIRECTIONS PANEL ══════════ */
+  #directions-panel {
+    position: absolute; left: 12px; top: 78px;
+    width: var(--panel-w); z-index: 960;
+    background: white; border-radius: var(--r-lg);
+    box-shadow: var(--shadow-lg); display: none; overflow: hidden;
+  }
+  #directions-panel.visible { display: block; }
+  .dir-header { background: var(--su-green); padding: 14px 16px; color: white; display: flex; align-items: center; gap: 10px; }
+  #dir-close {
+    background: rgba(255,255,255,.15); border: none; color: white;
+    width: 36px; height: 36px; border-radius: var(--r-sm); cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; flex-shrink: 0; transition: background .15s;
+  }
+  #dir-close:active { background: rgba(255,255,255,.3); }
+  @media (hover: hover) { #dir-close:hover { background: rgba(255,255,255,.25); } }
+  .dir-header-title { font-family: 'Playfair Display', serif; font-size: 15px; }
+  .dir-inputs { padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid var(--gray-100); }
+  .dir-input-row { display: flex; align-items: center; gap: 10px; background: var(--gray-50); border-radius: var(--r-sm); padding: 10px 12px; min-height: 48px; }
+  .dir-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .dir-dot.origin { background: #4CAF50; }
+  .dir-dot.dest { background: var(--su-green); }
+  .dir-input-row select {
+    flex: 1; font-size: 14px; color: var(--gray-700);
+    background: none; border: none; outline: none;
+    font-family: 'DM Sans', sans-serif;
+    min-height: 28px; cursor: pointer;
+    -webkit-appearance: none; appearance: none;
+  }
+  .dir-input-row select option { background: white; }
+  .dir-connector { width: 1.5px; height: 16px; background: var(--gray-300); margin-left: 16px; }
+
+  /* Route mode badge */
+  #route-mode-badge { margin: 0 16px 10px; padding: 8px 12px; border-radius: var(--r-sm); font-size: 12px; font-weight: 500; display: none; }
+  #route-mode-badge.campus { background: #EAF3EE; color: #1B4D2E; display: block; }
+  #route-mode-badge.osrm   { background: #FDF3E3; color: #C8922A; display: block; }
+
+  .btn-get-directions {
+    margin: 12px 16px 14px; width: calc(100% - 32px);
+    padding: 13px 0; background: var(--su-green); color: white;
+    border: none; border-radius: var(--r-sm); font-size: 14px;
+    font-family: 'DM Sans', sans-serif; font-weight: 500;
+    cursor: pointer; transition: background .2s; min-height: 48px;
+  }
+  .btn-get-directions:active { background: var(--su-green-light); }
+  @media (hover: hover) { .btn-get-directions:hover { background: var(--su-green-light); } }
+
+  #steps-container { max-height: 300px; overflow-y: auto; padding: 0 16px 16px; }
+  .step-item { display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--gray-100); }
+  .step-item:last-child { border-bottom: none; }
+  .step-num { width: 24px; height: 24px; border-radius: 50%; background: var(--su-green-pale); color: var(--su-green); font-size: 11px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; }
+  .step-text { font-size: 12px; color: var(--gray-700); line-height: 1.5; }
+  .step-dist { font-size: 11px; color: var(--gray-500); margin-top: 2px; }
+
+  /* ══════════ FLOATING CONTROLS ══════════ */
+  #float-controls { position: absolute; right: 12px; bottom: 180px; display: flex; flex-direction: column; gap: 8px; z-index: 900; }
+  .float-btn {
+    width: 48px; height: 48px; background: white; border: none;
+    border-radius: var(--r-md); box-shadow: var(--shadow-md); cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all .15s; color: var(--gray-700);
+  }
+  .float-btn:active { background: var(--su-green); color: white; }
+  .float-btn:active svg { stroke: white; }
+  @media (hover: hover) {
+    .float-btn:hover { background: var(--su-green); color: white; transform: scale(1.05); }
+    .float-btn:hover svg { stroke: white; }
+  }
+  .float-btn svg { stroke: var(--gray-700); width: 20px; height: 20px; }
+  /* Leaflet zoom alignment */
+  .leaflet-bottom.leaflet-right { bottom: 10px; right: 12px; }
+
+  /* ══════════ BOTTOM NAV (Mobile) ══════════ */
+  #bottom-nav {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    background: white; box-shadow: 0 -2px 12px rgba(0,0,0,.08);
+    display: none; z-index: 1000;
+    padding: 4px 0 env(safe-area-inset-bottom, 0);
+    border-top: 1px solid var(--gray-100);
+  }
+  .bottom-nav-inner { display: flex; align-items: stretch; justify-content: space-around; }
+  .nav-btn {
+    flex: 1; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 3px; padding: 10px 8px;
+    background: none; border: none; cursor: pointer;
+    color: var(--gray-500); font-family: 'DM Sans', sans-serif;
+    font-size: 11px; font-weight: 500; transition: color .15s;
+    border-radius: var(--r-sm); min-height: 56px;
+  }
+  .nav-btn svg { width: 22px; height: 22px; stroke: currentColor; }
+  .nav-btn.active { color: var(--su-green); }
+  .nav-btn.active svg { stroke: var(--su-green); }
+
+  /* ══════════ MOBILE BOTTOM SHEET ══════════ */
+  #mobile-sheet {
+    position: absolute; left: 0; right: 0;
+    background: white;
+    border-radius: var(--r-xl) var(--r-xl) 0 0;
+    box-shadow: 0 -4px 24px rgba(0,0,0,.12);
+    z-index: 950; display: none;
+    flex-direction: column;
+    /* Height is set by JS, default show partial */
+    height: 44vh;
+    bottom: var(--nav-h);
+    transition: height .3s ease;
+  }
+  #mobile-sheet.expanded { height: 72vh; }
+  .sheet-handle {
+    width: 40px; height: 4px; background: var(--gray-200);
+    border-radius: 2px; margin: 10px auto 4px;
+    flex-shrink: 0; cursor: pointer;
+  }
+  .sheet-content { overflow-y: auto; flex: 1; padding: 0 0 12px; -webkit-overflow-scrolling: touch; }
+
+  /* ══════════ MOBILE DIRECTIONS SHEET ══════════ */
+  #mobile-dir-sheet {
+    position: absolute; left: 0; right: 0;
+    bottom: var(--nav-h);
+    background: white;
+    border-radius: var(--r-xl) var(--r-xl) 0 0;
+    box-shadow: 0 -4px 24px rgba(0,0,0,.12);
+    z-index: 960; display: none;
+    flex-direction: column;
+    max-height: 80vh;
+    overflow: hidden;
+  }
+  #mobile-dir-sheet.visible { display: flex; }
+  .mobile-dir-handle { width: 40px; height: 4px; background: var(--gray-200); border-radius: 2px; margin: 10px auto 6px; flex-shrink: 0; }
+  .mobile-dir-content { overflow-y: auto; flex: 1; -webkit-overflow-scrolling: touch; padding-bottom: 16px; }
+  .mobile-dir-header { background: var(--su-green); padding: 14px 16px; color: white; display: flex; align-items: center; gap: 10px; }
+  #mobile-dir-close {
+    background: rgba(255,255,255,.15); border: none; color: white;
+    width: 36px; height: 36px; border-radius: var(--r-sm); cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; flex-shrink: 0; transition: background .15s;
+  }
+
+  /* ══════════ TOAST ══════════ */
+  #toast {
+    position: absolute; bottom: 80px; left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--gray-900); color: white;
+    padding: 10px 18px; border-radius: var(--r-md);
+    font-size: 13px; z-index: 9999; opacity: 0;
+    transition: all .3s ease;
+    white-space: nowrap; pointer-events: none;
+    max-width: calc(100vw - 32px);
+    text-overflow: ellipsis; overflow: hidden;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* ══════════ LEGEND (Desktop only) ══════════ */
+  #legend {
+    position: absolute; right: 12px; top: 78px;
+    z-index: 900; background: white; border-radius: var(--r-md);
+    box-shadow: var(--shadow-md); padding: 10px 14px; max-width: 160px;
+  }
+  #legend h4 { font-size: 11px; font-weight: 600; color: var(--su-green); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
+  .legend-item { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 11px; color: var(--gray-600); }
+  .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+
+  /* ══════════ CATEGORY COLORS ══════════ */
+  .cat-facility  { background: #E8F4FD; color: #1565C0; }
+  .cat-venue     { background: #F3E5F5; color: #6A1B9A; }
+  .cat-dormitory { background: #E8F5E9; color: #2E7D32; }
+
+  /* ══════════ LEAFLET CUSTOM MARKER ══════════ */
+  .su-marker {
+    width: 22px !important; height: 22px !important; border-radius: 50%;
+    border: 2.5px solid white; box-shadow: 0 2px 6px rgba(0,0,0,.3);
+    cursor: pointer; transition: transform .2s, box-shadow .2s;
+  }
+  .su-marker:hover { transform: scale(1.3); }
+  .su-marker.selected {
+    transform: scale(1.7) !important;
+    border: 3px solid white;
+    box-shadow: 0 0 0 3px rgba(255,255,255,0.7), 0 4px 12px rgba(0,0,0,.45);
+  }
+  .su-marker-label {
+    position: absolute; top: 26px; left: 50%;
+    transform: translateX(-50%);
+    background: white; color: #212529;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 11px; font-weight: 600;
+    white-space: nowrap; padding: 3px 8px;
+    border-radius: 20px; box-shadow: 0 2px 6px rgba(0,0,0,.2);
+    pointer-events: none;
+  }
+  .user-dot {
+    width: 16px !important; height: 16px !important;
+    background: #4285F4; border: 2.5px solid white;
+    border-radius: 50%;
+    box-shadow: 0 0 0 6px rgba(66,133,244,.2);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 0 6px rgba(66,133,244,.2); }
+    50%       { box-shadow: 0 0 0 10px rgba(66,133,244,.06); }
+  }
+
+  /* ══════════ RESPONSIVE — MOBILE ══════════ */
+  @media (max-width: 768px) {
+    :root { --topbar-h: 60px; }
+
+    /* Hide desktop panels */
+    #side-panel, #detail-panel, #directions-panel, #legend { display: none !important; }
+
+    /* Show mobile UI */
+    #bottom-nav { display: block; }
+    #mobile-sheet { display: flex; }
+
+    /* Float controls sit above the bottom nav */
+    #float-controls { bottom: calc(var(--nav-h) + 16px); right: 10px; }
+    .float-btn { width: 44px; height: 44px; }
+
+    /* Topbar: narrower, logo icon-only */
+    #topbar { padding: 10px 10px 0; gap: 8px; }
+    #logo-pill span, #logo-pill small { display: none; }
+    #logo-pill { padding: 10px; border-radius: var(--r-md); }
+
+    /* Search input stays readable */
+    #search-input { font-size: 16px; }
+
+    /* Toast above nav */
+    #toast { bottom: calc(var(--nav-h) + 16px); }
+
+    /* Leaflet zoom control above float buttons */
+    .leaflet-bottom.leaflet-right { bottom: calc(var(--nav-h) + 110px); right: 10px; }
+  }
+
+  /* ══════════ RESPONSIVE — DESKTOP ══════════ */
+  @media (min-width: 769px) {
+    #bottom-nav, #mobile-sheet, #mobile-dir-sheet { display: none !important; }
+    #float-controls { bottom: 180px; }
+  }
+
+  /* ══════════ VERY SMALL SCREENS (≤ 360px) ══════════ */
+  @media (max-width: 360px) {
+    #logo-pill { padding: 8px; }
+    #search-input { font-size: 15px; }
+    .nav-btn { font-size: 10px; padding: 8px 4px; }
+    .nav-btn svg { width: 20px; height: 20px; }
+  }
+
+  /* ══════════ SCROLLBAR ══════════ */
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--gray-300); border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<!-- MAP -->
+<div id="map-container"><div id="map"></div></div>
+
+<!-- TOP BAR -->
+<div id="topbar">
+  <div id="logo-pill">
+    <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+      <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
+      <circle cx="12" cy="9" r="2.5"/>
+    </svg>
+    <div><span>SU Navigate</span><small>Silliman University</small></div>
+  </div>
+  <div id="search-bar">
+    <svg id="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+    </svg>
+    <input id="search-input" type="text" placeholder="Search buildings, offices, facilities…" autocomplete="off"/>
+    <button id="search-clear" onclick="clearSearch()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+    <div id="search-results"></div>
+  </div>
+</div>
+
+<!-- SIDE PANEL (Desktop) -->
+<div id="side-panel">
+  <div class="panel-card"><div id="category-scroll"></div></div>
+  <div class="panel-card" id="locations-panel">
+    <div id="locations-header">
+      <h2>Campus Locations</h2>
+      <span id="location-count"></span>
+    </div>
+    <div id="locations-list"></div>
+  </div>
+</div>
+
+<!-- DETAIL PANEL (Desktop) -->
+<div id="detail-panel">
+  <div class="detail-header">
+    <div class="detail-icon" id="detail-icon">🏫</div>
+    <div class="detail-title-wrap">
+      <div class="detail-title" id="detail-title">Building Name</div>
+      <div class="detail-subtitle" id="detail-subtitle">Category</div>
+    </div>
+    <button id="detail-close" onclick="closeDetail()">✕</button>
+  </div>
+  <div class="detail-body">
+    <p class="detail-desc" id="detail-desc"></p>
+    <div class="detail-meta" id="detail-meta"></div>
+    <div class="detail-actions">
+      <button class="btn-directions" onclick="openDirections()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><path d="M3 12h18M13 5l7 7-7 7"/></svg>
+        Get Directions
+      </button>
+      <button class="btn-share" onclick="shareLocation()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.59 13.51 6.83 3.98M15.41 6.51l-6.82 3.98"/></svg>
+        Share
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- DIRECTIONS PANEL -->
+<div id="directions-panel">
+  <div class="dir-header">
+    <button id="dir-close" onclick="closeDirections()">←</button>
+    <span class="dir-header-title">Get Directions</span>
+  </div>
+  <div class="dir-inputs">
+    <div class="dir-input-row">
+      <div class="dir-dot origin"></div>
+      <select id="origin-select"><option value="current">📍 My current location</option></select>
+    </div>
+    <div class="dir-connector"></div>
+    <div class="dir-input-row">
+      <div class="dir-dot dest"></div>
+      <select id="dest-select"><option value="">Select destination…</option></select>
+    </div>
+  </div>
+  <!--
+    ROUTING MODE BADGE
+    ─────────────────────────────────────────────────────────
+    Shows which routing engine is active.
+    class="campus" → green: "Using campus walkways"
+    class="osrm"   → gold:  "Using OpenStreetMap roads"
+    Set from JS in drawRoute() based on mode parameter.
+    ─────────────────────────────────────────────────────────
+  -->
+  <div id="route-mode-badge"></div>
+  <button class="btn-get-directions" onclick="calculateRoute()">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" style="display:inline;vertical-align:middle;margin-right:6px"><path d="M3 12h18M13 5l7 7-7 7"/></svg>
+    Calculate Route
+  </button>
+  <div id="steps-container"></div>
+</div>
+
+<!-- FLOATING CONTROLS -->
+<div id="float-controls">
+  <button class="float-btn" onclick="centerOnCampus()" title="Center on campus">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>
+  </button>
+  <button class="float-btn" onclick="locateMe()" title="My location">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
+  </button>
+</div>
+
+<!-- LEGEND (Desktop) -->
+<div id="legend">
+  <h4>Legend</h4>
+  <div class="legend-item"><div class="legend-dot" style="background:#1565C0"></div>Facility</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#6A1B9A"></div>Venue</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#2E7D32"></div>Dormitory</div>
+</div>
+
+<!-- BOTTOM NAV (Mobile) -->
+<div id="bottom-nav">
+  <div class="bottom-nav-inner">
+    <button class="nav-btn active" onclick="mobileNav('explore')" id="nav-explore">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m16.24 7.76-2.12 6.36-6.36 2.12 2.12-6.36z"/></svg>
+      Explore
+    </button>
+    <button class="nav-btn" onclick="mobileNav('directions')" id="nav-directions">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 12h18M13 5l7 7-7 7"/></svg>
+      Directions
+    </button>
+    <button class="nav-btn" onclick="locateMe()" id="nav-locate">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
+      Locate Me
+    </button>
+  </div>
+</div>
+
+<!-- MOBILE BOTTOM SHEET -->
+<div id="mobile-sheet">
+  <div class="sheet-handle" id="sheet-handle-toggle" title="Tap to expand/collapse"></div>
+  <div class="sheet-content">
+    <div id="mobile-category-scroll" style="padding:10px 12px;display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;"></div>
+    <div id="mobile-locations-list" style="padding:0 0 8px;"></div>
+  </div>
+</div>
+
+<!-- MOBILE DIRECTIONS SHEET -->
+<div id="mobile-dir-sheet">
+  <div class="mobile-dir-handle"></div>
+  <div class="mobile-dir-header">
+    <button id="mobile-dir-close" onclick="closeMobileDirections()">←</button>
+    <span class="dir-header-title">Get Directions</span>
+  </div>
+  <div class="mobile-dir-content">
+    <div style="padding:14px 16px;display:flex;flex-direction:column;gap:8px;border-bottom:1px solid var(--gray-100);">
+      <div class="dir-input-row">
+        <div class="dir-dot origin"></div>
+        <select id="mobile-origin-select" style="flex:1;font-size:15px;color:var(--gray-700);background:none;border:none;outline:none;font-family:'DM Sans',sans-serif;min-height:32px;cursor:pointer;-webkit-appearance:none;">
+          <option value="current">📍 My current location</option>
+        </select>
+      </div>
+      <div class="dir-connector"></div>
+      <div class="dir-input-row">
+        <div class="dir-dot dest"></div>
+        <select id="mobile-dest-select" style="flex:1;font-size:15px;color:var(--gray-700);background:none;border:none;outline:none;font-family:'DM Sans',sans-serif;min-height:32px;cursor:pointer;-webkit-appearance:none;">
+          <option value="">Select destination…</option>
+        </select>
+      </div>
+    </div>
+    <div id="mobile-route-badge" style="margin:10px 16px 0;padding:8px 12px;border-radius:var(--r-sm);font-size:12px;font-weight:500;display:none;"></div>
+    <button class="btn-get-directions" onclick="calculateMobileRoute()" style="display:flex;align-items:center;justify-content:center;gap:6px;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><path d="M3 12h18M13 5l7 7-7 7"/></svg>
+      Calculate Route
+    </button>
+    <div id="mobile-steps-container" style="padding:0 16px 16px;overflow-y:auto;"></div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════
+   SU NAVIGATE  —  Leaflet.js + OpenStreetMap edition
+   No API key required. Completely free.
+   ───────────────────────────────────────────────────────────────
+
+   HOW ROUTING WORKS (now and in the future)
+   ─────────────────────────────────────────
+   calculateRoute() → resolveOrigin() → selectRouter()
+       │
+       ├─ if CAMPUS_ROUTING_ENABLED AND both points inside campus
+       │      → campusRoute()   [runs A* on CAMPUS_GRAPH]
+       │
+       └─ otherwise
+              → osrmRoute()     [free OSRM public server, no key]
+
+   To enable campus routing when you're ready:
+     1. Map out the walkways and fill in CAMPUS_GRAPH (bottom of file)
+     2. Implement campusRoute() (stub is ready below)
+     3. Set CAMPUS_ROUTING_ENABLED = true
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ─── CONFIG ─── */
+const SU_CENTER = { lat: 9.3067, lng: 123.3067 };
+const CAMPUS_ROUTING_ENABLED = true; // Graph validated and ready
+
+/* ─── LOCATION DATA ─── */
+/* Removed (incorrect coordinates): Medical Center, Ellinwood-Malvar, Registrar,
+   Student Affairs, East Gate, Cafeteria, Luce Auditorium duplicate,
+   Robina Hall, Main Gate, South Gate, Zoo.
+   Luce Auditorium coordinate corrected to 9.3135877, 123.3056119.          */
+const LOCATIONS = [
+  // ══ FACILITIES ═══════════════════════════════════════════════════════════════
+  { id:1,  name:"Ausejo Hall",                                         short:"Ausejo Hall",                                      category:"facility",  icon:"🏫", lat:9.3123797, lng:123.3066723, desc:"Academic building on the Silliman University campus.",                                                hours:"Mon–Fri 7:30am–5pm",               contact:"N/A" },
+  { id:2,  name:"Science Complex",                                     short:"Science Complex",                                  category:"facility",  icon:"🔬", lat:9.3116025, lng:123.3067123, desc:"Houses science laboratories and lecture rooms for various science programs.",                         hours:"Mon–Fri 7:30am–5pm",               contact:"N/A" },
+  { id:3,  name:"Silliman Hall",                                       short:"Silliman Hall",                                    category:"facility",  icon:"🏛️", lat:9.31076,   lng:123.30903,  desc:"The historic main building of Silliman University, a national cultural heritage landmark.",        hours:"Open daily",                       contact:"University Info" },
+  { id:4,  name:"Ruiz Administrative Hall",                            short:"Ruiz Administrative Hall",                         category:"facility",  icon:"🏢", lat:9.31115,   lng:123.30882,  desc:"Central administrative offices of Silliman University.",                                             hours:"Mon–Fri 8am–5pm",                  contact:"admin@su.edu.ph" },
+  { id:5,  name:"Business and Finance Office",                         short:"Business and Finance Office",                      category:"facility",  icon:"💳", lat:9.31118,   lng:123.30894,  desc:"Handles all financial transactions, tuition payments, and university business matters.",             hours:"Mon–Fri 8am–4:30pm",               contact:"N/A" },
+  { id:6,  name:"Guy Hall",                                            short:"Guy Hall",                                         category:"facility",  icon:"🏫", lat:9.31144,   lng:123.30873,  desc:"Academic and administrative building on the Silliman University campus.",                           hours:"Mon–Fri 7:30am–5pm",               contact:"N/A" },
+  { id:7,  name:"Uytengsu Hall (CED)",                                 short:"Uytengsu Hall",                                    category:"facility",  icon:"🏫", lat:9.31143,   lng:123.30836,  desc:"Home of the College of Education and related departments.",                                          hours:"Mon–Fri 7:30am–5pm",               contact:"N/A" },
+  { id:8,  name:"Alumni Hall",                                         short:"Alumni Hall",                                      category:"facility",  icon:"🏛️", lat:9.31145,   lng:123.30797,  desc:"Serves alumni relations and university functions.",                                                  hours:"Mon–Fri 8am–5pm",                  contact:"N/A" },
+  { id:9,  name:"Villareal Hall",                                      short:"Villareal Hall",                                   category:"facility",  icon:"🏫", lat:9.3113,    lng:123.3073,   desc:"Academic building on the Silliman University campus.",                                               hours:"Mon–Fri 7:30am–5pm",               contact:"N/A" },
+  { id:10, name:"Home Economics–Nutrition and Dietetics Dept.",        short:"Home Economics–Nutrition and Dietetics Dept.",     category:"facility",  icon:"🍽️", lat:9.3124141, lng:123.3063804,desc:"Department offering programs in home economics, nutrition, and dietetics.",                          hours:"Mon–Fri 7:30am–5pm",               contact:"N/A" },
+  { id:11, name:"Silliman University Pool",                            short:"Silliman University Pool",                         category:"facility",  icon:"🏊", lat:9.31492,   lng:123.30582,  desc:"Swimming pool for PE classes, swim team training, and recreational use.",                          hours:"Mon–Sat 6am–7pm",                  contact:"PE Department" },
+  { id:12, name:"Silliman Church",                                     short:"Silliman Church",                                  category:"facility",  icon:"⛪", lat:9.3108,    lng:123.30572,  desc:"The Silliman University Church, central to campus spiritual life.",                               hours:"Open daily",                       contact:"SU Church Office" },
+  { id:13, name:"Charles Bachelor Building",                           short:"Charles Bachelor Building",                        category:"facility",  icon:"🏫", lat:9.31171,   lng:123.30837,  desc:"Academic building on the Silliman University campus.",                                               hours:"Mon–Fri 7:30am–5pm",               contact:"N/A" },
+  { id:14, name:"College of Business and Administration Building",     short:"College of Business and Administration Building",  category:"facility",  icon:"📊", lat:9.31279,   lng:123.30711,  desc:"Houses the College of Business and Administration programs and faculty offices.",                  hours:"Mon–Fri 7:30am–5pm",               contact:"N/A" },
+  { id:15, name:"Katipunan Hall",                                      short:"Katipunan Hall",                                   category:"facility",  icon:"🏫", lat:9.31236,   lng:123.30719,  desc:"Academic building on the Silliman University campus.",                                               hours:"Mon–Fri 7:30am–5pm",               contact:"N/A" },
+  { id:16, name:"Ethel Chapman Hall",                                  short:"Ethel Chapman Hall",                               category:"facility",  icon:"🏫", lat:9.31294,   lng:123.30643,  desc:"Academic building on the Silliman University campus.",                                               hours:"Mon–Fri 7:30am–5pm",               contact:"N/A" },
+  { id:17, name:"Chapel of the Evangel",                               short:"Chapel of the Evangel",                            category:"facility",  icon:"⛪", lat:9.31347,   lng:123.30698,  desc:"Chapel on the Silliman University campus.",                                                         hours:"N/A",                              contact:"N/A" },
+  { id:18, name:"Alice Fullerton Hall",                                short:"Alice Fullerton Hall",                             category:"facility",  icon:"🏫", lat:9.31267,   lng:123.30642,  desc:"Academic building on the Silliman University campus.",                                               hours:"Mon–Fri 7:30am–5pm",               contact:"N/A" },
+  { id:19, name:"Ravello Field",                                       short:"Ravello Field",                                    category:"facility",  icon:"🏟️", lat:9.31444,   lng:123.30626,  desc:"Sports and activity field on the Silliman University campus.",                                       hours:"N/A",                              contact:"N/A" },
+  { id:20, name:"SU Gymnasium",                                        short:"SU Gymnasium",                                     category:"facility",  icon:"🏋️", lat:9.31422,   lng:123.30581,  desc:"Main university gymnasium for sports, physical education, and events.",                           hours:"Mon–Sat 6am–8pm",                  contact:"PE Department" },
+  { id:21, name:"Pharmacy Building",                                   short:"Pharmacy Building",                                category:"facility",  icon:"💊", lat:9.31512,   lng:123.30508,  desc:"Houses pharmacy programs and related laboratories.",                                                 hours:"Mon–Fri 7:30am–5pm",               contact:"N/A" },
+  { id:22, name:"Silliman University Medical School",                  short:"Silliman University Medical School",               category:"facility",  icon:"🏥", lat:9.31509,   lng:123.30423,  desc:"Medical school offering programs in medicine and related health sciences.",                         hours:"Mon–Fri 8am–5pm",                  contact:"N/A" },
+  { id:23, name:"SU Senior High School Department",                    short:"SU Senior High School Department",                 category:"facility",  icon:"🏫", lat:9.31409,   lng:123.30522,  desc:"Senior high school department of Silliman University.",                                             hours:"Mon–Fri 7am–5pm",                  contact:"N/A" },
+  { id:24, name:"Ariniego Art Gallery",                                short:"Ariniego Art Gallery",                             category:"facility",  icon:"🎨", lat:9.31371,   lng:123.30525,  desc:"Art gallery showcasing works by Silliman University students, faculty, and invited artists.",     hours:"N/A",                              contact:"N/A" },
+  { id:25, name:"COPVA 1",                                             short:"COPVA 1",                                          category:"facility",  icon:"🏫", lat:9.31268,   lng:123.30578,  desc:"Academic building on the Silliman University campus.",                                               hours:"Mon–Fri 7:30am–5pm",               contact:"N/A" },
+  { id:26, name:"COPVA 2",                                             short:"COPVA 2",                                          category:"facility",  icon:"🏫", lat:9.31304,   lng:123.30534,  desc:"Academic building on the Silliman University campus.",                                               hours:"Mon–Fri 7:30am–5pm",               contact:"N/A" },
+  { id:27, name:"Mary Marques Smith Hall / Olivia V. Yanson Hall",     short:"Mary Marques Smith Hall / Olivia V. Yanson Hall",  category:"facility",  icon:"🏥", lat:9.31183,   lng:123.30597,  desc:"Home of the College of Nursing programs and clinical skills facilities.",                          hours:"Mon–Sat 7am–6pm",                  contact:"N/A" },
+  { id:28, name:"Oriental Hall",                                       short:"Oriental Hall",                                    category:"facility",  icon:"🏫", lat:9.31114,   lng:123.30581,  desc:"Academic building on the Silliman University campus.",                                               hours:"Mon–Fri 7:30am–5pm",               contact:"N/A" },
+
+  // ══ VENUES ════════════════════════════════════════════════════════════════════
+  { id:29, name:"Claire Isabel McGill Luce Auditorium",                short:"Claire Isabel McGill Luce Auditorium",             category:"venue",     icon:"🎭", lat:9.3135877, lng:123.3056119, desc:"Main venue for university events, graduations, concerts, and large assemblies.",                   hours:"Varies by event",                  contact:"OVPAA Office" },
+  { id:30, name:"Uytengsu Transformative Learning Center",             short:"Uytengsu Transformative Learning Center",          category:"venue",     icon:"📖", lat:9.3136376, lng:123.3062855, desc:"The main university library and transformative learning center. Houses volumes, digital resources, and study spaces.", hours:"Mon–Fri 7:30am–8pm, Sat 8am–5pm", contact:"library@su.edu.ph" },
+  { id:31, name:"Cyber Lecture Hall / Audio Visual Theater",           short:"Cyber Lecture Hall / Audio Visual Theater",        category:"venue",     icon:"🖥️", lat:9.313588,  lng:123.3065675, desc:"Lecture hall and audio-visual theater for classes, screenings, and presentations.",               hours:"Mon–Fri 7:30am–5pm",               contact:"N/A" },
+  { id:32, name:"Instructional Media and Technology Center",           short:"Instructional Media and Technology Center",        category:"venue",     icon:"📽️", lat:9.3137591, lng:123.3065588, desc:"Multi-purpose room and media center supporting instructional technology across departments.",        hours:"Mon–Fri 7:30am–5pm",               contact:"N/A" },
+
+  // ══ DORMITORIES ═══════════════════════════════════════════════════════════════
+  { id:33, name:"Larena Hall",                                         short:"Larena Hall",                                      category:"dormitory", icon:"🏠", lat:9.31522,   lng:123.30615,  desc:"Dormitory on the Silliman University campus.",                                                       hours:"Open to residents",                contact:"Dormitory Office" },
+  { id:34, name:"Doltz Hall",                                          short:"Doltz Hall",                                       category:"dormitory", icon:"🏠", lat:9.31524,   lng:123.30567,  desc:"Dormitory on the Silliman University campus.",                                                       hours:"Open to residents",                contact:"Dormitory Office" },
+  { id:35, name:"Vernon Hall",                                         short:"Vernon Hall",                                      category:"dormitory", icon:"🏠", lat:9.31505,   lng:123.3046,   desc:"Dormitory on the Silliman University campus.",                                                       hours:"Open to residents",                contact:"Dormitory Office" },
+];
+
+const CATEGORIES = [
+  { id:"all",       label:"All",         icon:"🗺️" },
+  { id:"facility",  label:"Facility",    icon:"🏫" },
+  { id:"venue",     label:"Venue",       icon:"🎭" },
+  { id:"dormitory", label:"Dormitory",   icon:"🏠" },
+];
+
+const CAT_COLORS = {
+  facility:  '#1565C0',
+  venue:     '#6A1B9A',
+  dormitory: '#2E7D32',
+};
+
+/* ─── STATE ─── */
+let map = null;
+let markers = {};          // { locId: L.marker }
+let routeLayer = null;
+let userMarker = null;
+let watchId = null;        // geolocation watchPosition handle (live tracking)
+let selectedLocation = null;
+let activeCategory = 'all';
+
+
+/* ════════════════════════════════════════════════════════
+   MAP INIT  —  Leaflet + OpenStreetMap (free, no key)
+   ════════════════════════════════════════════════════════ */
+function initMap() {
+  map = L.map('map', {
+    center: [SU_CENTER.lat, SU_CENTER.lng],
+    zoom: 17,
+    zoomControl: false,
+  });
+
+  // CartoDB Positron tiles — free, no API key, works on local files too
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/">CARTO</a>',
+    maxZoom: 19,
+  }).addTo(map);
+
+  L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+  addAllMarkers();
+
+  // Start live location tracking immediately
+  startLiveTracking(true); // true = pan to user on first fix
+}
+
+
+/* ════════════════════════════════════════════════════════
+   MARKERS
+   ════════════════════════════════════════════════════════ */
+function addAllMarkers() {
+  Object.values(markers).forEach(m => map.removeLayer(m));
+  markers = {};
+
+  const filtered = activeCategory === 'all'
+    ? LOCATIONS
+    : LOCATIONS.filter(l => l.category === activeCategory);
+
+  filtered.forEach(loc => {
+    const isSelected = selectedLocation?.id === loc.id;
+    const icon = L.divIcon({
+      className: '',
+      html: `<div style="position:relative;display:inline-block;">
+               <div class="su-marker${isSelected ? ' selected' : ''}"
+                    style="background:${CAT_COLORS[loc.category] || '#555'}"></div>
+               ${isSelected ? `<div class="su-marker-label">${loc.short}</div>` : ''}
+             </div>`,
+      iconSize: [22, 22],
+      iconAnchor: [11, 11],
+    });
+    const marker = L.marker([loc.lat, loc.lng], { icon, title: loc.short })
+      .addTo(map)
+      .on('click', () => selectLocation(loc));
+    markers[loc.id] = marker;
+  });
+}
+
+
+/* ════════════════════════════════════════════════════════
+   DETAIL PANEL
+   ════════════════════════════════════════════════════════ */
+function selectLocation(loc) {
+  // Unhighlight the previously selected marker
+  if (selectedLocation && markers[selectedLocation.id]) {
+    const prevIcon = L.divIcon({
+      className: '',
+      html: `<div style="position:relative;display:inline-block;">
+               <div class="su-marker" style="background:${CAT_COLORS[selectedLocation.category] || '#555'}"></div>
+             </div>`,
+      iconSize: [22, 22],
+      iconAnchor: [11, 11],
+    });
+    markers[selectedLocation.id].setIcon(prevIcon);
+  }
+
+  selectedLocation = loc;
+
+  // Highlight the new selected marker
+  if (markers[loc.id]) {
+    const selIcon = L.divIcon({
+      className: '',
+      html: `<div style="position:relative;display:inline-block;">
+               <div class="su-marker selected" style="background:${CAT_COLORS[loc.category] || '#555'}"></div>
+               <div class="su-marker-label">${loc.short}</div>
+             </div>`,
+      iconSize: [22, 22],
+      iconAnchor: [11, 11],
+    });
+    markers[loc.id].setIcon(selIcon);
+    markers[loc.id].setZIndexOffset(1000);
+  }
+
+  document.getElementById('detail-icon').textContent     = loc.icon;
+  document.getElementById('detail-title').textContent    = loc.name;
+  document.getElementById('detail-subtitle').textContent = loc.category.charAt(0).toUpperCase() + loc.category.slice(1);
+  document.getElementById('detail-desc').textContent     = loc.desc;
+  document.getElementById('detail-meta').innerHTML = `
+    <div class="detail-meta-row">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+      ${loc.hours}
+    </div>
+    <div class="detail-meta-row">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2A19.79 19.79 0 0 1 4.64 5.18a2 2 0 0 1 1.995-2.18h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L10.91 10.91a16 16 0 0 0 6.18 6.18l1.24-.88a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7a2 2 0 0 1 1.72 2z"/></svg>
+      ${loc.contact}
+    </div>`;
+  const panel = document.getElementById('detail-panel');
+  panel.style.display = 'block';
+  setTimeout(() => panel.classList.add('visible'), 10);
+  map.panTo([loc.lat, loc.lng]);
+}
+
+function closeDetail() {
+  const panel = document.getElementById('detail-panel');
+  panel.classList.remove('visible');
+  setTimeout(() => { panel.style.display = 'none'; }, 250);
+  // Reset the marker back to normal
+  if (selectedLocation && markers[selectedLocation.id]) {
+    const resetIcon = L.divIcon({
+      className: '',
+      html: `<div style="position:relative;display:inline-block;">
+               <div class="su-marker" style="background:${CAT_COLORS[selectedLocation.category] || '#555'}"></div>
+             </div>`,
+      iconSize: [22, 22],
+      iconAnchor: [11, 11],
+    });
+    markers[selectedLocation.id].setIcon(resetIcon);
+    markers[selectedLocation.id].setZIndexOffset(0);
+  }
+  selectedLocation = null;
+}
+
+
+/* ════════════════════════════════════════════════════════
+   DIRECTIONS PANEL
+   ════════════════════════════════════════════════════════ */
+function openDirections() {
+  document.getElementById('directions-panel').classList.add('visible');
+  document.getElementById('detail-panel').classList.remove('visible');
+  setTimeout(() => document.getElementById('detail-panel').style.display = 'none', 250);
+  populateDirectionSelects();
+}
+
+function closeDirections() {
+  document.getElementById('directions-panel').classList.remove('visible');
+  clearRouteLayer();
+  document.getElementById('steps-container').innerHTML = '';
+  const badge = document.getElementById('route-mode-badge');
+  badge.className = ''; badge.textContent = '';
+}
+
+function populateDirectionSelects() {
+  const destSel = document.getElementById('dest-select');
+  const origSel = document.getElementById('origin-select');
+  destSel.innerHTML = '<option value="">Select destination…</option>';
+  origSel.innerHTML = '<option value="current">📍 My current location</option>';
+  LOCATIONS.forEach(loc => {
+    destSel.add(new Option(`${loc.icon} ${loc.short}`, loc.id));
+    origSel.add(new Option(`${loc.icon} ${loc.short}`, loc.id));
+  });
+  if (selectedLocation) destSel.value = selectedLocation.id;
+}
+
+function clearRouteLayer() {
+  if (routeLayer) { map.removeLayer(routeLayer); routeLayer = null; }
+}
+
+
+/* ════════════════════════════════════════════════════════
+   ROUTING ENTRY POINT
+   ════════════════════════════════════════════════════════ */
+function calculateRoute() {
+  const origVal = document.getElementById('origin-select').value;
+  const destVal = document.getElementById('dest-select').value;
+  if (!destVal) { showToast('Please select a destination.'); return; }
+
+  const dest = LOCATIONS.find(l => l.id == destVal);
+  if (!dest) return;
+
+  const resolveOrigin = (cb) => {
+    if (origVal === 'current') {
+      // Reuse the live-tracking position we already have — avoids
+      // conflicts with the watchPosition that's already running.
+      if (userMarker) {
+        const ll = userMarker.getLatLng();
+        cb({ lat: ll.lat, lng: ll.lng });
+      } else {
+        // Tracking not started yet — fall back to a one-shot request
+        if (!navigator.geolocation) { showToast('Geolocation not supported.'); return; }
+        navigator.geolocation.getCurrentPosition(
+          pos => cb({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+          ()   => { showToast('Could not get your location. Try selecting a building as origin.'); }
+        );
+      }
+    } else {
+      const orig = LOCATIONS.find(l => l.id == origVal);
+      if (orig) cb({ lat: orig.lat, lng: orig.lng });
+    }
+  };
+
+  resolveOrigin(origin => selectRouter(origin, dest));
+}
+
+/*
+  ┌──────────────────────────────────────────────────────┐
+  │  selectRouter                                        │
+  │  Decision point — campus graph OR OSRM fallback.     │
+  │                                                      │
+  │  When you're ready to add campus paths:              │
+  │   1. Set CAMPUS_ROUTING_ENABLED = true               │
+  │   2. Fill CAMPUS_GRAPH below                         │
+  │   3. Implement campusRoute()                         │
+  └──────────────────────────────────────────────────────┘
+*/
+function selectRouter(origin, dest) {
+  if (CAMPUS_ROUTING_ENABLED && isInsideCampus(origin) && isInsideCampus(dest)) {
+    campusRoute(origin, dest);
+  } else {
+    osrmRoute(origin, dest);
+  }
+}
+
+function isInsideCampus(point) {
+  /* Bounding box updated to cover all verified volunteer coordinates. */
+  return (
+    point.lat >= 9.3040 && point.lat <= 9.3160 &&
+    point.lng >= 123.3035 && point.lng <= 123.3100
+  );
+}
+
+
+/* ════════════════════════════════════════════════════════
+   ENGINE 1 — CAMPUS ROUTER  (A* on CAMPUS_GRAPH)
+   ════════════════════════════════════════════════════════ */
+
+/* Haversine distance in meters between two {lat,lng} objects */
+function haversineM(a, b) {
+  const R = 6371000;
+  const φ1 = a.lat * Math.PI/180, φ2 = b.lat * Math.PI/180;
+  const dφ = (b.lat - a.lat) * Math.PI/180;
+  const dλ = (b.lng - a.lng) * Math.PI/180;
+  const s = Math.sin(dφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(dλ/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1-s));
+}
+
+/* Find the graph node closest to a given {lat,lng} point.
+   If preferBuilding is true, checks building nodes (b##) first
+   so that known entrances snap directly to their own node. */
+function nearestNode(point, preferBuilding = false) {
+  const nodes = CAMPUS_GRAPH.nodes;
+  let best = null, bestDist = Infinity;
+
+  // If preferBuilding, check b-nodes first with a tight tolerance (30m)
+  if (preferBuilding) {
+    for (const [id, node] of Object.entries(nodes)) {
+      if (!id.startsWith('b')) continue;
+      const d = haversineM(point, node);
+      if (d < 30 && d < bestDist) { bestDist = d; best = id; }
+    }
+    if (best) return best;
+  }
+
+  // Fall back to nearest of any node
+  for (const [id, node] of Object.entries(nodes)) {
+    const d = haversineM(point, node);
+    if (d < bestDist) { bestDist = d; best = id; }
+  }
+  return best;
+}
+
+/* A* pathfinding — returns array of node IDs or null if no path */
+function aStar(startId, goalId) {
+  const nodes = CAMPUS_GRAPH.nodes;
+
+  // Build adjacency list from edge list
+  const adj = {};
+  for (const id of Object.keys(nodes)) adj[id] = [];
+  for (const edge of CAMPUS_GRAPH.edges) {
+    adj[edge.from].push({ to: edge.to, dist: edge.dist });
+  }
+
+  const h = id => haversineM(nodes[id], nodes[goalId]); // heuristic
+
+  const open   = new Set([startId]);
+  const cameFrom = {};
+  const gScore  = { [startId]: 0 };
+  const fScore  = { [startId]: h(startId) };
+
+  while (open.size > 0) {
+    // Node in open with lowest fScore
+    let current = [...open].reduce((a, b) =>
+      (fScore[a] ?? Infinity) < (fScore[b] ?? Infinity) ? a : b);
+
+    if (current === goalId) {
+      // Reconstruct path
+      const path = [current];
+      while (cameFrom[current]) { current = cameFrom[current]; path.unshift(current); }
+      return path;
+    }
+
+    open.delete(current);
+    for (const { to, dist } of (adj[current] || [])) {
+      const tentative = (gScore[current] ?? Infinity) + dist;
+      if (tentative < (gScore[to] ?? Infinity)) {
+        cameFrom[to] = current;
+        gScore[to]   = tentative;
+        fScore[to]   = tentative + h(to);
+        open.add(to);
+      }
+    }
+  }
+  return null; // no path found
+}
+
+function campusRoute(origin, dest) {
+  const nodes = CAMPUS_GRAPH.nodes;
+
+  if (!nodes || Object.keys(nodes).length === 0) {
+    showToast('Campus graph not loaded. Using road directions.');
+    osrmRoute(origin, dest);
+    return;
+  }
+
+  const originNode = nearestNode(origin, true);
+  const destNode   = nearestNode(dest,   true);
+
+  if (!originNode || !destNode) {
+    showToast('Could not find nearby path. Using road directions.');
+    osrmRoute(origin, dest);
+    return;
+  }
+
+  if (originNode === destNode) {
+    showToast('Origin and destination are on the same path node.');
+    return;
+  }
+
+  const path = aStar(originNode, destNode);
+
+  if (!path || path.length < 2) {
+    // Disconnected graph component — fall back to OSRM
+    showToast('No campus path found. Using road directions.');
+    osrmRoute(origin, dest);
+    return;
+  }
+
+  // Build latlngs array and compute total distance
+  const latlngs = path.map(id => [nodes[id].lat, nodes[id].lng]);
+  let totalDist = 0;
+  for (let i = 0; i < path.length - 1; i++) {
+    totalDist += haversineM(nodes[path[i]], nodes[path[i+1]]);
+  }
+
+  // Simple turn-by-turn: just list each node as a step
+  const steps = path.slice(1).map((id, i) => {
+    const prev = nodes[path[i]];
+    const curr = nodes[id];
+    const d    = haversineM(prev, curr);
+    return { text: nodes[id].label || `Continue to waypoint`, dist: formatDist(d) };
+  });
+
+  drawRoute(latlngs, steps, formatDist(totalDist), formatDuration(totalDist / 1.2), 'campus');
+}
+
+
+/* ════════════════════════════════════════════════════════
+   ENGINE 2 — OSRM  (free, no API key, works now)
+   Uses the public OSRM demo server with foot profile.
+   ════════════════════════════════════════════════════════ */
+async function osrmRoute(origin, dest) {
+  showToast('Calculating route…');
+  const url =
+    `https://router.project-osrm.org/route/v1/foot/` +
+    `${origin.lng},${origin.lat};${dest.lng},${dest.lat}` +
+    `?overview=full&geometries=geojson&steps=true`;
+
+  try {
+    const res  = await fetch(url);
+    const data = await res.json();
+
+    if (data.code !== 'Ok' || !data.routes.length) {
+      showToast('Could not find a route. Try different locations.');
+      return;
+    }
+
+    const route   = data.routes[0];
+    const leg     = route.legs[0];
+    const coords  = route.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
+    const steps   = leg.steps.map(s => ({
+      text: s.maneuver.instruction || s.name || 'Continue',
+      dist: formatDist(s.distance),
+    }));
+
+    drawRoute(coords, steps, formatDist(route.distance), formatDuration(route.duration), 'osrm');
+  } catch (err) {
+    showToast('Network error. Check your internet connection.');
+  }
+}
+
+
+/* ════════════════════════════════════════════════════════
+   DRAW ROUTE  (shared by both engines)
+   ════════════════════════════════════════════════════════ */
+function drawRoute(latlngs, steps, dist, duration, mode) {
+  clearRouteLayer();
+
+  routeLayer = L.polyline(latlngs, {
+    color: '#1B4D2E', weight: 5, opacity: 0.85, lineJoin: 'round',
+  }).addTo(map);
+
+  map.fitBounds(routeLayer.getBounds(), { padding: [40, 40] });
+
+  // Mode badge
+  const badge = document.getElementById('route-mode-badge');
+  if (mode === 'campus') {
+    badge.className = 'campus';
+    badge.textContent = '🗺️ Using campus walkways';
+  } else {
+    badge.className = 'osrm';
+    badge.textContent = '🌐 Using OpenStreetMap roads';
+  }
+
+  // Summary + steps
+  const container = document.getElementById('steps-container');
+  container.innerHTML = `
+    <div style="display:flex;gap:12px;padding:8px 0 12px;margin-bottom:4px;border-bottom:1px solid #eee;">
+      <div style="flex:1;text-align:center;background:#EAF3EE;border-radius:8px;padding:8px 4px;">
+        <div style="font-size:17px;font-weight:600;color:#1B4D2E">${duration}</div>
+        <div style="font-size:11px;color:#6C757D;margin-top:2px">walking</div>
+      </div>
+      <div style="flex:1;text-align:center;background:#F8F9FA;border-radius:8px;padding:8px 4px;">
+        <div style="font-size:17px;font-weight:600;color:#495057">${dist}</div>
+        <div style="font-size:11px;color:#6C757D;margin-top:2px">distance</div>
+      </div>
+    </div>`;
+
+  steps.forEach((step, i) => {
+    const div = document.createElement('div');
+    div.className = 'step-item';
+    div.innerHTML = `
+      <div class="step-num">${i + 1}</div>
+      <div>
+        <div class="step-text">${step.text}</div>
+        <div class="step-dist">${step.dist}</div>
+      </div>`;
+    container.appendChild(div);
+  });
+}
+
+
+/* ════════════════════════════════════════════════════════
+   MAP CONTROLS
+   ════════════════════════════════════════════════════════ */
+function centerOnCampus() { map.setView([SU_CENTER.lat, SU_CENTER.lng], 17); }
+
+function startLiveTracking(panOnFirstFix = false) {
+  if (!navigator.geolocation) {
+    showToast('Geolocation not supported on this device.');
+    showToast('Campus map loaded! Tap any location to explore.');
+    return;
+  }
+
+  let firstFix = true;
+
+  const userIcon = L.divIcon({
+    className: '',
+    html: '<div class="user-dot"></div>',
+    iconSize: [16, 16], iconAnchor: [8, 8],
+  });
+
+  watchId = navigator.geolocation.watchPosition(
+    pos => {
+      const latlng = [pos.coords.latitude, pos.coords.longitude];
+
+      if (!userMarker) {
+        userMarker = L.marker(latlng, {
+          icon: userIcon,
+          title: 'You are here',
+          zIndexOffset: 1000,
+        }).addTo(map);
+      } else {
+        userMarker.setLatLng(latlng);
+      }
+
+      if (firstFix) {
+        firstFix = false;
+        if (panOnFirstFix) {
+          map.setView(latlng, 18);
+          showToast('Your location is shown in blue. It updates as you move.');
+        } else {
+          showToast('Location found! Dot updates as you move.');
+        }
+      }
+    },
+    () => {
+      if (panOnFirstFix) {
+        // Called on page load — permission denied, just load normally
+        showToast('Campus map loaded! Tap any location to explore.');
+      } else {
+        showToast('Could not access your location.');
+      }
+    },
+    { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+  );
+}
+
+function locateMe() {
+  // If already tracking, just pan back to the user dot
+  if (userMarker) {
+    map.setView(userMarker.getLatLng(), 18);
+    showToast('Centred on your location.');
+    return;
+  }
+  // Otherwise start tracking (happens if permission was denied at load)
+  startLiveTracking(false);
+}
+
+function shareLocation() {
+  if (!selectedLocation) return;
+  const text = `Find ${selectedLocation.name} at Silliman University`;
+  if (navigator.share) {
+    navigator.share({ title: selectedLocation.name, text, url: window.location.href });
+  } else {
+    navigator.clipboard.writeText(text).then(() => showToast('Location info copied!'));
+  }
+}
+
+
+/* ════════════════════════════════════════════════════════
+   LIST RENDERING  (safe — uses data attributes, no inline JSON)
+   ════════════════════════════════════════════════════════ */
+function renderLocations(list, containerId) {
+  const el = document.getElementById(containerId);
+  if (!list.length) {
+    el.innerHTML = `<div style="padding:24px;text-align:center;color:#ADB5BD;font-size:13px;">No locations found</div>`;
+    return;
+  }
+  el.innerHTML = list.map(loc => `
+    <div class="location-item ${selectedLocation?.id === loc.id ? 'active' : ''}" data-loc-id="${loc.id}">
+      <div class="loc-icon cat-${loc.category}">${loc.icon}</div>
+      <div class="loc-info">
+        <div class="loc-name">${loc.short}</div>
+        <div class="loc-desc">${loc.desc.substring(0, 55)}…</div>
+      </div>
+      <button class="loc-go-btn" data-dir-id="${loc.id}" title="Directions">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke-width="2.5"><path d="M3 12h18M13 5l7 7-7 7"/></svg>
+      </button>
+    </div>`).join('');
+
+  el.querySelectorAll('.location-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const loc = LOCATIONS.find(l => l.id === parseInt(item.dataset.locId));
+      if (loc) selectLocation(loc);
+    });
+  });
+  el.querySelectorAll('.loc-go-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const loc = LOCATIONS.find(l => l.id === parseInt(btn.dataset.dirId));
+      if (loc) { selectedLocation = loc; openDirections(); }
+    });
+  });
+}
+
+function renderCategories(containerId) {
+  const el = document.getElementById(containerId);
+  el.innerHTML = CATEGORIES.map(cat => `
+    <button class="chip ${activeCategory === cat.id ? 'active' : ''}" data-cat="${cat.id}">
+      <span class="chip-icon">${cat.icon}</span>${cat.label}
+    </button>`).join('');
+  el.querySelectorAll('.chip').forEach(btn => {
+    btn.addEventListener('click', () => setCategory(btn.dataset.cat));
+  });
+}
+
+function setCategory(catId) {
+  activeCategory = catId;
+  renderCategories('category-scroll');
+  renderCategories('mobile-category-scroll');
+  const filtered = activeCategory === 'all' ? LOCATIONS : LOCATIONS.filter(l => l.category === activeCategory);
+  renderLocations(filtered, 'locations-list');
+  renderLocations(filtered, 'mobile-locations-list');
+  document.getElementById('location-count').textContent = `${filtered.length} places`;
+  if (map) addAllMarkers();
+}
+
+
+/* ════════════════════════════════════════════════════════
+   SEARCH
+   ════════════════════════════════════════════════════════ */
+document.getElementById('search-input').addEventListener('input', function () {
+  const q = this.value.trim().toLowerCase();
+  const clearBtn  = document.getElementById('search-clear');
+  const resultsEl = document.getElementById('search-results');
+  clearBtn.style.display = q ? 'block' : 'none';
+  if (!q) { resultsEl.style.display = 'none'; return; }
+
+  const matches = LOCATIONS.filter(l =>
+    l.name.toLowerCase().includes(q) || l.short.toLowerCase().includes(q) ||
+    l.desc.toLowerCase().includes(q) || l.category.toLowerCase().includes(q)
+  );
+
+  if (!matches.length) {
+    resultsEl.innerHTML = `<div style="padding:16px;text-align:center;font-size:13px;color:#ADB5BD">No results for "${q}"</div>`;
+  } else {
+    resultsEl.innerHTML = matches.map(loc => `
+      <div class="search-result-item" data-id="${loc.id}">
+        <div class="result-icon cat-${loc.category}">${loc.icon}</div>
+        <div class="result-info">
+          <div class="result-name">${loc.short}</div>
+          <div class="result-type">${loc.category.charAt(0).toUpperCase() + loc.category.slice(1)}</div>
+        </div>
+      </div>`).join('');
+    resultsEl.querySelectorAll('.search-result-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const loc = LOCATIONS.find(l => l.id === parseInt(item.dataset.id));
+        if (loc) { clearSearch(); selectLocation(loc); }
+      });
+    });
+  }
+  resultsEl.style.display = 'block';
+});
+
+function clearSearch() {
+  document.getElementById('search-input').value = '';
+  document.getElementById('search-results').style.display = 'none';
+  document.getElementById('search-clear').style.display = 'none';
+}
+
+document.addEventListener('click', e => {
+  if (!document.getElementById('search-bar').contains(e.target))
+    document.getElementById('search-results').style.display = 'none';
+});
+
+
+/* ════════════════════════════════════════════════════════
+   MOBILE NAV
+   ════════════════════════════════════════════════════════ */
+function mobileNav(tab) {
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('nav-' + tab)?.classList.add('active');
+
+  if (tab === 'directions') {
+    // Show mobile directions sheet, hide explore sheet
+    document.getElementById('mobile-sheet').style.display = 'none';
+    openMobileDirections();
+  } else {
+    // Show explore sheet, hide directions
+    document.getElementById('mobile-sheet').style.display = 'flex';
+    closeMobileDirections();
+  }
+}
+
+function openMobileDirections() {
+  const sheet = document.getElementById('mobile-dir-sheet');
+  sheet.classList.add('visible');
+  populateMobileDirectionSelects();
+}
+
+function closeMobileDirections() {
+  document.getElementById('mobile-dir-sheet').classList.remove('visible');
+  clearRouteLayer();
+  document.getElementById('mobile-steps-container').innerHTML = '';
+  const badge = document.getElementById('mobile-route-badge');
+  if (badge) { badge.style.display = 'none'; badge.textContent = ''; }
+  // Switch nav back to explore if we were on directions
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('nav-explore')?.classList.add('active');
+  document.getElementById('mobile-sheet').style.display = 'flex';
+}
+
+function populateMobileDirectionSelects() {
+  const destSel = document.getElementById('mobile-dest-select');
+  const origSel = document.getElementById('mobile-origin-select');
+  if (!destSel || !origSel) return;
+  destSel.innerHTML = '<option value="">Select destination…</option>';
+  origSel.innerHTML = '<option value="current">📍 My current location</option>';
+  LOCATIONS.forEach(loc => {
+    destSel.add(new Option(`${loc.icon} ${loc.short}`, loc.id));
+    origSel.add(new Option(`${loc.icon} ${loc.short}`, loc.id));
+  });
+  if (selectedLocation) destSel.value = selectedLocation.id;
+}
+
+function calculateMobileRoute() {
+  const origVal = document.getElementById('mobile-origin-select').value;
+  const destVal = document.getElementById('mobile-dest-select').value;
+  if (!destVal) { showToast('Please select a destination.'); return; }
+
+  const dest = LOCATIONS.find(l => l.id == destVal);
+  if (!dest) return;
+
+  const resolveOrigin = (cb) => {
+    if (origVal === 'current') {
+      if (userMarker) {
+        const ll = userMarker.getLatLng();
+        cb({ lat: ll.lat, lng: ll.lng });
+      } else {
+        if (!navigator.geolocation) { showToast('Geolocation not supported.'); return; }
+        navigator.geolocation.getCurrentPosition(
+          pos => cb({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+          ()   => { showToast('Could not get your location. Try selecting a building as origin.'); }
+        );
+      }
+    } else {
+      const orig = LOCATIONS.find(l => l.id == origVal);
+      if (orig) cb({ lat: orig.lat, lng: orig.lng });
+    }
+  };
+
+  resolveOrigin(origin => selectRouterMobile(origin, dest));
+}
+
+function selectRouterMobile(origin, dest) {
+  if (CAMPUS_ROUTING_ENABLED && isInsideCampus(origin) && isInsideCampus(dest)) {
+    campusRouteMobile(origin, dest);
+  } else {
+    osrmRouteMobile(origin, dest);
+  }
+}
+
+function campusRouteMobile(origin, dest) {
+  const nodes = CAMPUS_GRAPH.nodes;
+  if (!nodes || Object.keys(nodes).length === 0) {
+    showToast('Campus graph not loaded. Using road directions.');
+    osrmRouteMobile(origin, dest); return;
+  }
+  const originNode = nearestNode(origin, true);
+  const destNode   = nearestNode(dest,   true);
+  if (!originNode || !destNode) {
+    showToast('Could not find nearby path. Using road directions.');
+    osrmRouteMobile(origin, dest); return;
+  }
+  if (originNode === destNode) { showToast('Origin and destination are on the same node.'); return; }
+  const path = aStar(originNode, destNode);
+  if (!path || path.length < 2) {
+    showToast('No campus path found. Using road directions.');
+    osrmRouteMobile(origin, dest); return;
+  }
+  const latlngs = path.map(id => [nodes[id].lat, nodes[id].lng]);
+  let totalDist = 0;
+  for (let i = 0; i < path.length - 1; i++) totalDist += haversineM(nodes[path[i]], nodes[path[i+1]]);
+  const steps = path.slice(1).map((id, i) => {
+    const d = haversineM(nodes[path[i]], nodes[id]);
+    return { text: nodes[id].label || 'Continue to waypoint', dist: formatDist(d) };
+  });
+  drawMobileRoute(latlngs, steps, formatDist(totalDist), formatDuration(totalDist / 1.2), 'campus');
+}
+
+async function osrmRouteMobile(origin, dest) {
+  showToast('Calculating route…');
+  const url = `https://router.project-osrm.org/route/v1/foot/${origin.lng},${origin.lat};${dest.lng},${dest.lat}?overview=full&geometries=geojson&steps=true`;
+  try {
+    const res  = await fetch(url);
+    const data = await res.json();
+    if (data.code !== 'Ok' || !data.routes.length) { showToast('Could not find a route.'); return; }
+    const route  = data.routes[0];
+    const leg    = route.legs[0];
+    const coords = route.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
+    const steps  = leg.steps.map(s => ({ text: s.maneuver.instruction || s.name || 'Continue', dist: formatDist(s.distance) }));
+    drawMobileRoute(coords, steps, formatDist(route.distance), formatDuration(route.duration), 'osrm');
+  } catch (err) {
+    showToast('Network error. Check your internet connection.');
+  }
+}
+
+function drawMobileRoute(latlngs, steps, dist, duration, mode) {
+  clearRouteLayer();
+  routeLayer = L.polyline(latlngs, { color: '#1B4D2E', weight: 5, opacity: 0.85, lineJoin: 'round' }).addTo(map);
+  map.fitBounds(routeLayer.getBounds(), { padding: [40, 40] });
+
+  const badge = document.getElementById('mobile-route-badge');
+  if (badge) {
+    badge.style.display = 'block';
+    if (mode === 'campus') {
+      badge.style.background = '#EAF3EE'; badge.style.color = '#1B4D2E';
+      badge.textContent = '🗺️ Using campus walkways';
+    } else {
+      badge.style.background = '#FDF3E3'; badge.style.color = '#C8922A';
+      badge.textContent = '🌐 Using OpenStreetMap roads';
+    }
+  }
+
+  const container = document.getElementById('mobile-steps-container');
+  container.innerHTML = `
+    <div style="display:flex;gap:12px;padding:12px 0;margin-bottom:4px;border-bottom:1px solid #eee;">
+      <div style="flex:1;text-align:center;background:#EAF3EE;border-radius:8px;padding:10px 4px;">
+        <div style="font-size:18px;font-weight:600;color:#1B4D2E">${duration}</div>
+        <div style="font-size:12px;color:#6C757D;margin-top:2px">walking</div>
+      </div>
+      <div style="flex:1;text-align:center;background:#F8F9FA;border-radius:8px;padding:10px 4px;">
+        <div style="font-size:18px;font-weight:600;color:#495057">${dist}</div>
+        <div style="font-size:12px;color:#6C757D;margin-top:2px">distance</div>
+      </div>
+    </div>`;
+  steps.forEach((step, i) => {
+    const div = document.createElement('div');
+    div.className = 'step-item';
+    div.innerHTML = `<div class="step-num">${i + 1}</div><div><div class="step-text">${step.text}</div><div class="step-dist">${step.dist}</div></div>`;
+    container.appendChild(div);
+  });
+}
+
+/* Sheet expand/collapse toggle */
+document.addEventListener('DOMContentLoaded', () => {
+  const handle = document.getElementById('sheet-handle-toggle');
+  if (handle) {
+    handle.addEventListener('click', () => {
+      document.getElementById('mobile-sheet').classList.toggle('expanded');
+    });
+  }
+});
+
+
+/* ════════════════════════════════════════════════════════
+   UTILITIES
+   ════════════════════════════════════════════════════════ */
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+function formatDist(meters) {
+  return meters >= 1000 ? (meters / 1000).toFixed(1) + ' km' : Math.round(meters) + ' m';
+}
+
+function formatDuration(seconds) {
+  const m = Math.round(seconds / 60);
+  return m < 60 ? m + ' min' : Math.floor(m / 60) + 'h ' + (m % 60) + 'min';
+}
+
+
+/* ════════════════════════════════════════════════════════
+   CAMPUS GRAPH  —  Latest_Campus_Pathways.kml
+   ════════════════════════════════════════════════════════
+   60 path nodes · 43 KML edges + 16 auto-bridge edges
+   + 35 building snap edges  =  188 total directed edges
+   Total mapped walkway: ~2,588m
+
+   Auto-bridge edges were computed programmatically to
+   connect the 16 isolated fragments to the main network.
+   Max bridge distance: 86m (Vernon Hall cluster).
+   All 35 active buildings reachable via campus routing.
+   ════════════════════════════════════════════════════════ */
+const CAMPUS_GRAPH = {
+  nodes: {
+    // ── PATH NODES (n01–n60, from KML) ────────────────────
+    "n01": { lat:9.31076,    lng:123.30903,   label:"Silliman Hall area" },
+    "n02": { lat:9.3107729,  lng:123.3081389, label:"South-east path" },
+    "n03": { lat:9.3108,     lng:123.30572,   label:"Church entrance junction" },
+    "n04": { lat:9.3111222,  lng:123.3061145, label:"South main junction" },
+    "n05": { lat:9.3111498,  lng:123.3087218, label:"Admin area east" },
+    "n06": { lat:9.3112027,  lng:123.3075191, label:"East path junction" },
+    "n07": { lat:9.3112439,  lng:123.3064525, label:"CON spur" },
+    "n08": { lat:9.3113089,  lng:123.3085573, label:"Admin area north-east" },
+    "n09": { lat:9.3114128,  lng:123.308507,  label:"Admin area north" },
+    "n10": { lat:9.311428,   lng:123.3086471, label:"Admin block junction" },
+    "n11": { lat:9.31153,    lng:123.3064187, label:"Science south junction" },
+    "n12": { lat:9.3115393,  lng:123.3065769, label:"Science east end" },
+    "n13": { lat:9.3116055,  lng:123.3060325, label:"Central spine junction" },
+    "n14": { lat:9.3116306,  lng:123.3064039, label:"Science junction" },
+    "n15": { lat:9.311804,   lng:123.3063852, label:"Science north end" },
+    "n16": { lat:9.31183,    lng:123.30597,   label:"CON path start" },
+    "n17": { lat:9.311837,   lng:123.3060184, label:"CON path end" },
+    "n18": { lat:9.31236,    lng:123.30719,   label:"Katipunan junction" },
+    "n19": { lat:9.3123797,  lng:123.3066723, label:"Ausejo Hall entrance" },
+    "n20": { lat:9.3125022,  lng:123.3058717, label:"West branch junction" },
+    "n21": { lat:9.3125202,  lng:123.3059966, label:"Main spine junction" },
+    "n22": { lat:9.3125754,  lng:123.3065603, label:"Ausejo path end" },
+    "n23": { lat:9.3125875,  lng:123.3066353, label:"Loop path west" },
+    "n24": { lat:9.3126318,  lng:123.3071829, label:"Loop path east" },
+    "n25": { lat:9.3126364,  lng:123.3072514, label:"Katipunan path end" },
+    "n26": { lat:9.3126538,  lng:123.3074316, label:"North-east end" },
+    "n27": { lat:9.31268,    lng:123.30578,   label:"COPVA 1 entrance" },
+    "n28": { lat:9.31304,    lng:123.30534,   label:"COPVA 2 end" },
+    "n29": { lat:9.3130898,  lng:123.3053755, label:"COPVA 2 junction" },
+    "n30": { lat:9.3131665,  lng:123.3052535, label:"West path junction" },
+    "n31": { lat:9.3135877,  lng:123.3056119, label:"Luce Auditorium entrance" },
+    "n32": { lat:9.3136376,  lng:123.3062855, label:"Library entrance" },
+    "n33": { lat:9.3136858,  lng:123.3052893, label:"North-west junction" },
+    "n34": { lat:9.3136902,  lng:123.3056063, label:"Auditorium path junction" },
+    "n35": { lat:9.3136932,  lng:123.3059187, label:"North spine junction" },
+    "n36": { lat:9.3137057,  lng:123.3061749, label:"North path junction" },
+    "n37": { lat:9.3137554,  lng:123.3062915, label:"Library path junction" },
+    "n38": { lat:9.31409,    lng:123.30522,   label:"SHS entrance" },
+    "n39": { lat:9.3140976,  lng:123.3053016, label:"North-west mid junction" },
+    "n40": { lat:9.3142107,  lng:123.3053024, label:"Far north-west junction" },
+    "n41": { lat:9.3142235,  lng:123.305912,  label:"Gym area junction" },
+    "n42": { lat:9.3144161,  lng:123.3059015, label:"Ravello junction" },
+    "n43": { lat:9.31444,    lng:123.30626,   label:"Ravello Field entrance" },
+    "n44": { lat:9.3144479,  lng:123.3073401, label:"Far east junction" },
+    "n45": { lat:9.3146286,  lng:123.3066387, label:"North path junction" },
+    "n46": { lat:9.31492,    lng:123.30582,   label:"Pool entrance" },
+    "n47": { lat:9.3149213,  lng:123.30587,   label:"Pool path junction" },
+    "n48": { lat:9.315019,   lng:123.3064302, label:"North-east path junction" },
+    "n49": { lat:9.31505,    lng:123.3046,    label:"Vernon Hall entrance" },
+    "n50": { lat:9.3150886,  lng:123.3043896, label:"Medical School junction" },
+    "n51": { lat:9.31509,    lng:123.30423,   label:"Medical School entrance" },
+    "n52": { lat:9.3151008,  lng:123.3046015, label:"Vernon path junction" },
+    "n53": { lat:9.3151242,  lng:123.3063339, label:"Far north junction" },
+    "n54": { lat:9.3151314,  lng:123.3058574, label:"North path end" },
+    "n55": { lat:9.3151389,  lng:123.3056684, label:"Doltz area junction" },
+    "n56": { lat:9.3151394,  lng:123.3053845, label:"Pharmacy area junction" },
+    "n57": { lat:9.3151445,  lng:123.3061461, label:"Larena area junction" },
+    "n58": { lat:9.31522,    lng:123.30615,   label:"Larena Hall entrance" },
+    "n59": { lat:9.31524,    lng:123.30567,   label:"Doltz Hall entrance" },
+    "n60": { lat:9.3152808,  lng:123.3068511, label:"Far north-east end" },
+
+    // ── BUILDING ENTRANCE NODES (b##) ─────────────────────
+    "b01": { lat:9.3123797,  lng:123.3066723, label:"Ausejo Hall" },
+    "b02": { lat:9.3116025,  lng:123.3067123, label:"Science Complex" },
+    "b03": { lat:9.31076,    lng:123.30903,   label:"Silliman Hall" },
+    "b04": { lat:9.31115,    lng:123.30882,   label:"Ruiz Administrative Hall" },
+    "b05": { lat:9.31118,    lng:123.30894,   label:"Business and Finance Office" },
+    "b06": { lat:9.31144,    lng:123.30873,   label:"Guy Hall" },
+    "b07": { lat:9.31143,    lng:123.30836,   label:"Uytengsu Hall (CED)" },
+    "b08": { lat:9.31145,    lng:123.30797,   label:"Alumni Hall" },
+    "b09": { lat:9.3113,     lng:123.3073,    label:"Villareal Hall" },
+    "b10": { lat:9.3124141,  lng:123.3063804, label:"Home Economics–ND Dept." },
+    "b11": { lat:9.31492,    lng:123.30582,   label:"Silliman University Pool" },
+    "b12": { lat:9.3108,     lng:123.30572,   label:"Silliman Church" },
+    "b13": { lat:9.31171,    lng:123.30837,   label:"Charles Bachelor Building" },
+    "b14": { lat:9.31279,    lng:123.30711,   label:"College of Business and Administration" },
+    "b15": { lat:9.31236,    lng:123.30719,   label:"Katipunan Hall" },
+    "b16": { lat:9.31294,    lng:123.30643,   label:"Ethel Chapman Hall" },
+    "b17": { lat:9.31347,    lng:123.30698,   label:"Chapel of the Evangel" },
+    "b18": { lat:9.31267,    lng:123.30642,   label:"Alice Fullerton Hall" },
+    "b19": { lat:9.31444,    lng:123.30626,   label:"Ravello Field" },
+    "b20": { lat:9.31422,    lng:123.30581,   label:"SU Gymnasium" },
+    "b21": { lat:9.31512,    lng:123.30508,   label:"Pharmacy Building" },
+    "b22": { lat:9.31509,    lng:123.30423,   label:"Silliman University Medical School" },
+    "b23": { lat:9.31409,    lng:123.30522,   label:"SU Senior High School Department" },
+    "b24": { lat:9.31371,    lng:123.30525,   label:"Ariniego Art Gallery" },
+    "b25": { lat:9.31268,    lng:123.30578,   label:"COPVA 1" },
+    "b26": { lat:9.31304,    lng:123.30534,   label:"COPVA 2" },
+    "b27": { lat:9.31183,    lng:123.30597,   label:"Mary Marques Smith / Olivia V. Yanson Hall" },
+    "b28": { lat:9.31114,    lng:123.30581,   label:"Oriental Hall" },
+    "b29": { lat:9.3135877,  lng:123.3056119, label:"Claire Isabel McGill Luce Auditorium" },
+    "b30": { lat:9.3136376,  lng:123.3062855, label:"Uytengsu Transformative Learning Center" },
+    "b31": { lat:9.313588,   lng:123.3065675, label:"Cyber Lecture Hall / AVT" },
+    "b32": { lat:9.3137591,  lng:123.3065588, label:"Instructional Media and Technology Center" },
+    "b33": { lat:9.31522,    lng:123.30615,   label:"Larena Hall" },
+    "b34": { lat:9.31524,    lng:123.30567,   label:"Doltz Hall" },
+    "b35": { lat:9.31505,    lng:123.3046,    label:"Vernon Hall" },
+  },
+  edges: [
+    // ── KML PATH EDGES ─────────────────────────────────────
+    { from:"n26", to:"n21", dist:158.2 }, { from:"n21", to:"n26", dist:158.2 }, // Line 3
+    { from:"n21", to:"n35", dist:130.7 }, { from:"n35", to:"n21", dist:130.7 }, // Line 7
+    { from:"n35", to:"n36", dist:28.1  }, { from:"n36", to:"n35", dist:28.1  }, // Line 8
+    { from:"n36", to:"n37", dist:13.9  }, { from:"n37", to:"n36", dist:13.9  }, // Line 9
+    { from:"n13", to:"n14", dist:40.8  }, { from:"n14", to:"n13", dist:40.8  }, // Line 14
+    { from:"n14", to:"n15", dist:19.4  }, { from:"n15", to:"n14", dist:19.4  }, // Line 15
+    { from:"n14", to:"n11", dist:11.3  }, { from:"n11", to:"n14", dist:11.3  }, // Line 16
+    { from:"n11", to:"n12", dist:17.4  }, { from:"n12", to:"n11", dist:17.4  }, // Line 17
+    { from:"n21", to:"n20", dist:13.9  }, { from:"n20", to:"n21", dist:13.9  }, // Line 18
+    { from:"n20", to:"n30", dist:104.9 }, { from:"n30", to:"n20", dist:104.9 }, // Line 19
+    { from:"n35", to:"n33", dist:69.1  }, { from:"n33", to:"n35", dist:69.1  }, // Line 20
+    { from:"n30", to:"n33", dist:57.9  }, { from:"n33", to:"n30", dist:57.9  }, // Line 27
+    { from:"n19", to:"n22", dist:33.8  }, { from:"n22", to:"n19", dist:33.8  }, // Line 28
+    { from:"n35", to:"n54", dist:160.1 }, { from:"n54", to:"n35", dist:160.1 }, // Line 33
+    { from:"n44", to:"n48", dist:136.0 }, { from:"n48", to:"n44", dist:136.0 }, // Line 34
+    { from:"n48", to:"n60", dist:57.9  }, { from:"n60", to:"n48", dist:57.9  }, // Line 35
+    { from:"n06", to:"n04", dist:154.4 }, { from:"n04", to:"n06", dist:154.4 }, // Line 36
+    { from:"n04", to:"n13", dist:55.1  }, { from:"n13", to:"n04", dist:55.1  }, // Line 37
+    { from:"n13", to:"n21", dist:101.8 }, { from:"n21", to:"n13", dist:101.8 }, // Line 38
+    { from:"n07", to:"n11", dist:32.0  }, { from:"n11", to:"n07", dist:32.0  }, // Line 39
+    { from:"n48", to:"n53", dist:16.2  }, { from:"n53", to:"n48", dist:16.2  }, // Line 40
+    { from:"n40", to:"n41", dist:66.9  }, { from:"n41", to:"n40", dist:66.9  }, // Line 42
+    { from:"n34", to:"n31", dist:11.4  }, { from:"n31", to:"n34", dist:11.4  }, // Line 48
+    { from:"n33", to:"n56", dist:159.2 }, { from:"n56", to:"n33", dist:159.2 }, // Line 53
+    { from:"n38", to:"n39", dist:9.0   }, { from:"n39", to:"n38", dist:9.0   }, // Line 54
+    { from:"n50", to:"n53", dist:213.7 }, { from:"n53", to:"n50", dist:213.7 }, // Line 55
+    { from:"n51", to:"n50", dist:17.5  }, { from:"n50", to:"n51", dist:17.5  }, // Line 56
+    { from:"n52", to:"n49", dist:5.7   }, { from:"n49", to:"n52", dist:5.7   }, // Line 57
+    { from:"n59", to:"n55", dist:11.2  }, { from:"n55", to:"n59", dist:11.2  }, // Line 58
+    { from:"n58", to:"n57", dist:8.4   }, { from:"n57", to:"n58", dist:8.4   }, // Line 59
+    { from:"n29", to:"n28", dist:6.8   }, { from:"n28", to:"n29", dist:6.8   }, // Line 61
+    { from:"n18", to:"n25", dist:41.5  }, { from:"n25", to:"n18", dist:41.5  }, // Line 62
+    { from:"n16", to:"n17", dist:5.4   }, { from:"n17", to:"n16", dist:5.4   }, // Line 63
+    { from:"n37", to:"n32", dist:13.1  }, { from:"n32", to:"n37", dist:13.1  }, // Line 64
+    { from:"n42", to:"n43", dist:39.4  }, { from:"n43", to:"n42", dist:39.4  }, // Line 65
+    { from:"n43", to:"n45", dist:46.5  }, { from:"n45", to:"n43", dist:46.5  }, // Line 66
+    { from:"n46", to:"n47", dist:5.5   }, { from:"n47", to:"n46", dist:5.5   }, // Line 67
+    { from:"n23", to:"n24", dist:80.5  }, { from:"n24", to:"n23", dist:80.5  }, // Line 69
+    { from:"n03", to:"n04", dist:67.8  }, { from:"n04", to:"n03", dist:67.8  }, // Line 70
+    { from:"n06", to:"n10", dist:136.9 }, { from:"n10", to:"n06", dist:136.9 }, // Line 71
+    { from:"n09", to:"n02", dist:117.8 }, { from:"n02", to:"n09", dist:117.8 }, // Line 72
+    { from:"n08", to:"n05", dist:27.9  }, { from:"n05", to:"n08", dist:27.9  }, // Line 73
+    { from:"n01", to:"n05", dist:73.8  }, { from:"n05", to:"n01", dist:73.8  }, // Line 74
+
+    // ── AUTO-BRIDGE EDGES (programmatically added) ─────────
+    { from:"n53", to:"n54", dist:52.3  }, { from:"n54", to:"n53", dist:52.3  }, // bridge ISO-3
+    { from:"n08", to:"n10", dist:16.5  }, { from:"n10", to:"n08", dist:16.5  }, // bridge ISO-2
+    { from:"n43", to:"n37", dist:76.2  }, { from:"n37", to:"n43", dist:76.2  }, // bridge ISO-5
+    { from:"n34", to:"n35", dist:34.3  }, { from:"n35", to:"n34", dist:34.3  }, // bridge ISO-1
+    { from:"n55", to:"n54", dist:20.8  }, { from:"n54", to:"n55", dist:20.8  }, // bridge ISO-4
+    { from:"n29", to:"n30", dist:15.9  }, { from:"n30", to:"n29", dist:15.9  }, // bridge ISO-6
+    { from:"n24", to:"n26", dist:27.4  }, { from:"n26", to:"n24", dist:27.4  }, // bridge ISO-7
+    { from:"n47", to:"n54", dist:23.4  }, { from:"n54", to:"n47", dist:23.4  }, // bridge ISO-8
+    { from:"n25", to:"n26", dist:19.9  }, { from:"n26", to:"n25", dist:19.9  }, // bridge ISO-9
+    { from:"n52", to:"n56", dist:86.0  }, { from:"n56", to:"n52", dist:86.0  }, // bridge ISO-10
+    { from:"n17", to:"n13", dist:25.8  }, { from:"n13", to:"n17", dist:25.8  }, // bridge ISO-11
+    { from:"n09", to:"n10", dist:15.5  }, { from:"n10", to:"n09", dist:15.5  }, // bridge ISO-12
+    { from:"n57", to:"n54", dist:31.7  }, { from:"n54", to:"n57", dist:31.7  }, // bridge ISO-13
+    { from:"n38", to:"n33", dist:45.6  }, { from:"n33", to:"n38", dist:45.6  }, // bridge ISO-14
+    { from:"n40", to:"n33", dist:58.4  }, { from:"n33", to:"n40", dist:58.4  }, // bridge ISO-15
+    { from:"n22", to:"n21", dist:62.2  }, { from:"n21", to:"n22", dist:62.2  }, // bridge ISO-16
+
+    // ── BUILDING SNAP EDGES ────────────────────────────────
+    { from:"b01", to:"n19", dist:0.1   }, { from:"n19", to:"b01", dist:0.1   }, // Ausejo Hall (exact)
+    { from:"b02", to:"n12", dist:16.4  }, { from:"n12", to:"b02", dist:16.4  }, // Science Complex
+    { from:"b03", to:"n01", dist:0.1   }, { from:"n01", to:"b03", dist:0.1   }, // Silliman Hall (exact)
+    { from:"b04", to:"n05", dist:22.0  }, { from:"n05", to:"b04", dist:22.0  }, // Ruiz Admin Hall
+    { from:"b05", to:"n05", dist:18.0  }, { from:"n05", to:"b05", dist:18.0  }, // Business & Finance
+    { from:"b06", to:"n06", dist:35.0  }, { from:"n06", to:"b06", dist:35.0  }, // Guy Hall
+    { from:"b07", to:"n06", dist:28.0  }, { from:"n06", to:"b07", dist:28.0  }, // Uytengsu Hall
+    { from:"b08", to:"n06", dist:40.0  }, { from:"n06", to:"b08", dist:40.0  }, // Alumni Hall
+    { from:"b09", to:"n06", dist:18.0  }, { from:"n06", to:"b09", dist:18.0  }, // Villareal Hall
+    { from:"b10", to:"n21", dist:43.7  }, { from:"n21", to:"b10", dist:43.7  }, // Home Econ–ND
+    { from:"b11", to:"n46", dist:0.1   }, { from:"n46", to:"b11", dist:0.1   }, // SU Pool (exact)
+    { from:"b12", to:"n03", dist:0.1   }, { from:"n03", to:"b12", dist:0.1   }, // Silliman Church (exact)
+    { from:"b13", to:"n04", dist:30.0  }, { from:"n04", to:"b13", dist:30.0  }, // Charles Bachelor Bldg
+    { from:"b14", to:"n18", dist:19.3  }, { from:"n18", to:"b14", dist:19.3  }, // CBA Building
+    { from:"b15", to:"n18", dist:0.1   }, { from:"n18", to:"b15", dist:0.1   }, // Katipunan Hall (exact)
+    { from:"b16", to:"n21", dist:66.6  }, { from:"n21", to:"b16", dist:66.6  }, // Ethel Chapman Hall
+    { from:"b17", to:"n26", dist:55.0  }, { from:"n26", to:"b17", dist:55.0  }, // Chapel of the Evangel
+    { from:"b18", to:"n21", dist:49.4  }, { from:"n21", to:"b18", dist:49.4  }, // Alice Fullerton Hall
+    { from:"b19", to:"n43", dist:0.1   }, { from:"n43", to:"b19", dist:0.1   }, // Ravello Field (exact)
+    { from:"b20", to:"n41", dist:11.2  }, { from:"n41", to:"b20", dist:11.2  }, // SU Gymnasium
+    { from:"b21", to:"n56", dist:33.5  }, { from:"n56", to:"b21", dist:33.5  }, // Pharmacy Building
+    { from:"b22", to:"n51", dist:0.1   }, { from:"n51", to:"b22", dist:0.1   }, // Medical School (exact)
+    { from:"b23", to:"n38", dist:0.1   }, { from:"n38", to:"b23", dist:0.1   }, // SU Senior High School (exact)
+    { from:"b24", to:"n33", dist:5.1   }, { from:"n33", to:"b24", dist:5.1   }, // Ariniego Art Gallery
+    { from:"b25", to:"n27", dist:0.1   }, { from:"n27", to:"b25", dist:0.1   }, // COPVA 1 (exact)
+    { from:"b26", to:"n28", dist:0.1   }, { from:"n28", to:"b26", dist:0.1   }, // COPVA 2 (exact)
+    { from:"b27", to:"n16", dist:0.1   }, { from:"n16", to:"b27", dist:0.1   }, // CON Hall (exact)
+    { from:"b28", to:"n04", dist:33.5  }, { from:"n04", to:"b28", dist:33.5  }, // Oriental Hall
+    { from:"b29", to:"n31", dist:0.1   }, { from:"n31", to:"b29", dist:0.1   }, // Luce Auditorium (exact)
+    { from:"b30", to:"n32", dist:0.1   }, { from:"n32", to:"b30", dist:0.1   }, // Library UTLC (exact)
+    { from:"b31", to:"n37", dist:35.5  }, { from:"n37", to:"b31", dist:35.5  }, // AVT
+    { from:"b32", to:"n37", dist:29.3  }, { from:"n37", to:"b32", dist:29.3  }, // IMTC
+    { from:"b33", to:"n58", dist:0.1   }, { from:"n58", to:"b33", dist:0.1   }, // Larena Hall (exact)
+    { from:"b34", to:"n59", dist:0.1   }, { from:"n59", to:"b34", dist:0.1   }, // Doltz Hall (exact)
+    { from:"b35", to:"n49", dist:0.1   }, { from:"n49", to:"b35", dist:0.1   }, // Vernon Hall (exact)
+  ],
+};
+
+
+/* ════════════════════════════════════════════════════════
+   BOOT
+   ════════════════════════════════════════════════════════ */
+function init() {
+  renderCategories('category-scroll');
+  renderCategories('mobile-category-scroll');
+  renderLocations(LOCATIONS, 'locations-list');
+  renderLocations(LOCATIONS, 'mobile-locations-list');
+  document.getElementById('location-count').textContent = `${LOCATIONS.length} places`;
+  initMap();
+}
+
+init();
+</script>
+</body>
+</html>
