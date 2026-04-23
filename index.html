@@ -337,23 +337,37 @@
   /* ══════════ MOBILE BOTTOM SHEET ══════════ */
   #mobile-sheet {
     position: absolute; left: 0; right: 0;
+    bottom: var(--nav-h);
     background: white;
     border-radius: var(--r-xl) var(--r-xl) 0 0;
     box-shadow: 0 -4px 24px rgba(0,0,0,.12);
     z-index: 950; display: none;
     flex-direction: column;
-    /* Height is set by JS, default show partial */
-    height: 44vh;
-    bottom: var(--nav-h);
-    transition: height .3s ease;
+    overflow: hidden;
+    height: min(78dvh, calc(100dvh - var(--nav-h) - 8px));
+    max-height: calc(100dvh - var(--nav-h) - 8px);
+    transform: translate3d(0, var(--sheet-translate-y, 0px), 0);
+    transition: transform .28s cubic-bezier(0.22, 0.61, 0.36, 1);
+    will-change: transform;
   }
-  #mobile-sheet.expanded { height: 72vh; }
+  #mobile-sheet.dragging { transition: none; }
   .sheet-handle {
     width: 40px; height: 4px; background: var(--gray-200);
-    border-radius: 2px; margin: 10px auto 4px;
-    flex-shrink: 0; cursor: pointer;
+    border-radius: 2px; margin: 10px auto 8px;
+    flex-shrink: 0; cursor: grab;
+    touch-action: none;
   }
-  .sheet-content { overflow-y: auto; flex: 1; padding: 0 0 12px; -webkit-overflow-scrolling: touch; }
+  #mobile-sheet.dragging .sheet-handle { cursor: grabbing; }
+  .sheet-content {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    flex: 1; padding: 0 0 12px;
+  }
+  body.sheet-dragging {
+    user-select: none;
+    -webkit-user-select: none;
+  }
 
   /* ══════════ MOBILE DIRECTIONS SHEET ══════════ */
   #mobile-dir-sheet {
@@ -364,14 +378,27 @@
     box-shadow: 0 -4px 24px rgba(0,0,0,.12);
     z-index: 960; display: none;
     flex-direction: column;
-    height: 55vh; max-height: 55vh;
     overflow: hidden;
-    transition: height .3s ease;
+    height: min(82dvh, calc(100dvh - var(--nav-h) - 8px));
+    max-height: calc(100dvh - var(--nav-h) - 8px);
+    transform: translate3d(0, var(--dir-sheet-translate-y, 0px), 0);
+    transition: transform .28s cubic-bezier(0.22, 0.61, 0.36, 1);
+    will-change: transform;
   }
-  #mobile-dir-sheet.has-route { height: 62vh; max-height: 62vh; }
+  #mobile-dir-sheet.dragging { transition: none; }
   #mobile-dir-sheet.visible { display: flex; }
-  .mobile-dir-handle { width: 40px; height: 4px; background: var(--gray-200); border-radius: 2px; margin: 10px auto 6px; flex-shrink: 0; cursor: pointer; }
-  .mobile-dir-content { overflow-y: auto; flex: 1; -webkit-overflow-scrolling: touch; padding-bottom: 16px; }
+  .mobile-dir-handle {
+    width: 40px; height: 4px; background: var(--gray-200);
+    border-radius: 2px; margin: 10px auto 6px;
+    flex-shrink: 0; cursor: grab;
+    touch-action: none;
+  }
+  #mobile-dir-sheet.dragging .mobile-dir-handle { cursor: grabbing; }
+  .mobile-dir-content {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    flex: 1; -webkit-overflow-scrolling: touch; padding-bottom: 16px;
+  }
   #mobile-steps-container { max-height: 180px; overflow-y: auto; padding: 0 16px 16px; }
   .mobile-dir-header { background: var(--su-green); padding: 14px 16px; color: white; display: flex; align-items: center; gap: 10px; }
   #mobile-dir-close {
@@ -630,7 +657,7 @@
 
 <!-- MOBILE BOTTOM SHEET -->
 <div id="mobile-sheet">
-  <div class="sheet-handle" id="sheet-handle-toggle" title="Tap to expand/collapse"></div>
+  <div class="sheet-handle" id="sheet-handle-toggle" title="Drag to resize panel"></div>
   <div class="sheet-content">
     <div id="mobile-category-scroll" style="padding:10px 12px;display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;"></div>
     <div id="mobile-locations-list" style="padding:0 0 8px;"></div>
@@ -1400,33 +1427,54 @@ document.addEventListener('click', e => {
     document.getElementById('search-results').style.display = 'none';
 });
 
+const MOBILE_SHEET_MEDIA_QUERY = window.matchMedia('(max-width: 768px)');
+let mobileSheetController = null;
+let mobileDirSheetController = null;
+
+function isMobileViewport() {
+  return MOBILE_SHEET_MEDIA_QUERY.matches;
+}
+
 
 /* ════════════════════════════════════════════════════════
    MOBILE NAV
    ════════════════════════════════════════════════════════ */
 function mobileNav(tab) {
+  if (!isMobileViewport()) return;
+
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('nav-' + tab)?.classList.add('active');
 
   if (tab === 'directions') {
     // Show mobile directions sheet, hide explore sheet
-    document.getElementById('mobile-sheet').style.display = 'none';
+    mobileSheetController?.hide();
     openMobileDirections();
   } else {
     // Show explore sheet, hide directions
-    document.getElementById('mobile-sheet').style.display = 'flex';
     closeMobileDirections();
   }
 }
 
 function openMobileDirections() {
-  const sheet = document.getElementById('mobile-dir-sheet');
-  sheet.classList.add('visible');
+  const dirSheet = document.getElementById('mobile-dir-sheet');
+  if (mobileDirSheetController) {
+    mobileDirSheetController.show('mid');
+  } else if (dirSheet) {
+    dirSheet.classList.add('visible');
+    dirSheet.style.display = 'flex';
+  }
   populateMobileDirectionSelects();
 }
 
 function closeMobileDirections() {
-  document.getElementById('mobile-dir-sheet').classList.remove('visible');
+  const dirSheet = document.getElementById('mobile-dir-sheet');
+  dirSheet.classList.remove('visible');
+  dirSheet.classList.remove('has-route');
+  if (mobileDirSheetController) {
+    mobileDirSheetController.hide();
+  } else {
+    dirSheet.style.display = 'none';
+  }
   clearRouteLayer();
   document.getElementById('mobile-steps-container').innerHTML = '';
   const badge = document.getElementById('mobile-route-badge');
@@ -1434,7 +1482,7 @@ function closeMobileDirections() {
   // Switch nav back to explore if we were on directions
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('nav-explore')?.classList.add('active');
-  document.getElementById('mobile-sheet').style.display = 'flex';
+  if (isMobileViewport()) mobileSheetController?.show('mid');
 }
 
 function populateMobileDirectionSelects() {
@@ -1537,6 +1585,7 @@ function drawMobileRoute(latlngs, steps, dist, duration, mode) {
   routeLayer = L.polyline(latlngs, { color: '#1B4D2E', weight: 5, opacity: 0.85, lineJoin: 'round' }).addTo(map);
   map.fitBounds(routeLayer.getBounds(), { padding: [60, 20] });
   document.getElementById('mobile-dir-sheet').classList.add('has-route');
+  if (isMobileViewport()) mobileDirSheetController?.show('mid');
 
   const badge = document.getElementById('mobile-route-badge');
   if (badge) {
@@ -1570,14 +1619,306 @@ function drawMobileRoute(latlngs, steps, dist, duration, mode) {
   });
 }
 
-/* Sheet expand/collapse toggle */
-document.addEventListener('DOMContentLoaded', () => {
-  const handle = document.getElementById('sheet-handle-toggle');
-  if (handle) {
-    handle.addEventListener('click', () => {
-      document.getElementById('mobile-sheet').classList.toggle('expanded');
-    });
+/* Mobile sheets: draggable + snap (collapsed / mid / expanded) */
+function createDraggableSheetController({
+  sheetId,
+  handleSelector,
+  contentSelector,
+  translateVar,
+  initialVisible = false,
+  visibleClass = '',
+  collapsedVisible = 26,
+  midRatio = 0.56,
+  minMidVisible = 220,
+  minHeight = 280,
+  getMidRatio = null,
+}) {
+  const sheet = document.getElementById(sheetId);
+  const handle = sheet?.querySelector(handleSelector);
+  const content = sheet?.querySelector(contentSelector);
+  if (!sheet || !handle || !content) return null;
+
+  const SNAP_ORDER = ['collapsed', 'mid', 'expanded'];
+  const state = {
+    activeSnap: 'mid',
+    currentOffset: 0,
+    snapOffsets: { collapsed: 0, mid: 0, expanded: 0 },
+    dragMode: null,
+    activeScrollEl: null,
+    startY: 0,
+    startOffset: 0,
+    lastY: 0,
+    lastMoveTs: 0,
+    velocityY: 0,
+    mouseDragging: false,
+    isVisible: initialVisible,
+  };
+
+  const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+
+  function readNumberVar(name, fallback) {
+    const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    const parsed = parseFloat(raw);
+    return Number.isFinite(parsed) ? parsed : fallback;
   }
+
+  function setSheetVisibility(visible) {
+    if (visible) {
+      sheet.style.display = 'flex';
+      if (visibleClass) sheet.classList.add(visibleClass);
+      return;
+    }
+    if (visibleClass) sheet.classList.remove(visibleClass);
+    sheet.style.display = 'none';
+    sheet.classList.remove('dragging');
+    document.body.classList.remove('sheet-dragging');
+  }
+
+  function isScrollableY(el) {
+    if (!el) return false;
+    const style = getComputedStyle(el);
+    const canScroll = /(auto|scroll|overlay)/.test(style.overflowY);
+    return canScroll && el.scrollHeight > (el.clientHeight + 1);
+  }
+
+  function findScrollableAncestor(fromEl) {
+    let current = fromEl;
+    while (current && current !== content) {
+      if (isScrollableY(current)) return current;
+      current = current.parentElement;
+    }
+    return content;
+  }
+
+  function nearestSnapFor(offset) {
+    return SNAP_ORDER.reduce((best, snap) => (
+      Math.abs(offset - state.snapOffsets[snap]) < Math.abs(offset - state.snapOffsets[best]) ? snap : best
+    ), 'mid');
+  }
+
+  function applyOffset(offset, animate = true) {
+    const min = state.snapOffsets.expanded;
+    const max = state.snapOffsets.collapsed;
+    state.currentOffset = clamp(offset, min, max);
+    sheet.style.setProperty(translateVar, `${state.currentOffset}px`);
+    sheet.classList.toggle('dragging', !animate);
+  }
+
+  function setSnap(snapName = 'mid', animate = true) {
+    const safeSnap = state.snapOffsets[snapName] === undefined ? 'mid' : snapName;
+    state.activeSnap = safeSnap;
+    sheet.dataset.snap = safeSnap;
+    applyOffset(state.snapOffsets[safeSnap], animate);
+  }
+
+  function computeSnapOffsets() {
+    const viewportH = window.visualViewport?.height || window.innerHeight || document.documentElement.clientHeight;
+    const navHeight = readNumberVar('--nav-h', 64);
+    const topbarHeight = readNumberVar('--topbar-h', 60);
+    const reservedTop = Math.max(8, topbarHeight * 0.4);
+    const maxHeight = Math.max(minHeight, Math.floor(viewportH - navHeight - reservedTop));
+    const dynamicMidRatio = typeof getMidRatio === 'function' ? getMidRatio(sheet) : midRatio;
+    const midVisible = clamp(Math.round(maxHeight * dynamicMidRatio), minMidVisible, maxHeight - 44);
+
+    state.snapOffsets = {
+      expanded: 0,
+      mid: Math.round(maxHeight - midVisible),
+      collapsed: Math.round(maxHeight - collapsedVisible),
+    };
+
+    sheet.style.height = `${maxHeight}px`;
+    sheet.style.maxHeight = `${maxHeight}px`;
+  }
+
+  function refreshLayout(animate = false) {
+    computeSnapOffsets();
+    setSnap(state.activeSnap, animate);
+  }
+
+  function beginDrag(startY, source, targetEl = null) {
+    if (!isMobileViewport() || !state.isVisible) return;
+    state.dragMode = source === 'handle' ? 'drag' : 'pending';
+    state.activeScrollEl = source === 'content' ? findScrollableAncestor(targetEl) : content;
+    state.startY = startY;
+    state.startOffset = state.currentOffset;
+    state.lastY = startY;
+    state.lastMoveTs = performance.now();
+    state.velocityY = 0;
+    document.body.classList.add('sheet-dragging');
+  }
+
+  function moveDrag(clientY, ev) {
+    if (!state.dragMode) return;
+
+    const deltaY = clientY - state.startY;
+    if (state.dragMode === 'pending') {
+      if (Math.abs(deltaY) < 6) return;
+
+      const scrollEl = state.activeScrollEl || content;
+      const draggingDownFromTop = deltaY > 0 && scrollEl.scrollTop <= 0;
+      const draggingUpWhileNotExpanded = deltaY < 0 && state.activeSnap !== 'expanded';
+      if (draggingDownFromTop || draggingUpWhileNotExpanded) {
+        state.dragMode = 'drag';
+      } else {
+        state.dragMode = 'scroll';
+        document.body.classList.remove('sheet-dragging');
+        return;
+      }
+    }
+
+    if (state.dragMode !== 'drag') return;
+    if (ev?.cancelable) ev.preventDefault();
+
+    const now = performance.now();
+    const dt = now - state.lastMoveTs;
+    if (dt > 0) state.velocityY = (clientY - state.lastY) / dt;
+    state.lastY = clientY;
+    state.lastMoveTs = now;
+    applyOffset(state.startOffset + deltaY, false);
+  }
+
+  function endDrag() {
+    if (!state.dragMode) {
+      state.mouseDragging = false;
+      document.body.classList.remove('sheet-dragging');
+      return;
+    }
+
+    if (state.dragMode === 'drag') {
+      const projected = state.currentOffset + (state.velocityY * 180);
+      const targetSnap = nearestSnapFor(projected);
+      setSnap(targetSnap, true);
+    }
+
+    state.dragMode = null;
+    state.activeScrollEl = null;
+    state.velocityY = 0;
+    state.mouseDragging = false;
+    sheet.classList.remove('dragging');
+    document.body.classList.remove('sheet-dragging');
+  }
+
+  function addTouchListeners(target, source) {
+    target.addEventListener('touchstart', ev => {
+      if (!ev.touches.length) return;
+      beginDrag(ev.touches[0].clientY, source, ev.target);
+    }, { passive: true });
+
+    target.addEventListener('touchmove', ev => {
+      if (!ev.touches.length) return;
+      moveDrag(ev.touches[0].clientY, ev);
+    }, { passive: false });
+
+    target.addEventListener('touchend', () => endDrag(), { passive: true });
+    target.addEventListener('touchcancel', () => endDrag(), { passive: true });
+  }
+
+  addTouchListeners(handle, 'handle');
+  addTouchListeners(content, 'content');
+
+  handle.addEventListener('mousedown', ev => {
+    if (ev.button !== 0) return;
+    state.mouseDragging = true;
+    beginDrag(ev.clientY, 'handle', ev.target);
+    ev.preventDefault();
+  });
+
+  content.addEventListener('mousedown', ev => {
+    if (ev.button !== 0) return;
+    state.mouseDragging = true;
+    beginDrag(ev.clientY, 'content', ev.target);
+  });
+
+  window.addEventListener('mousemove', ev => {
+    if (!state.mouseDragging) return;
+    moveDrag(ev.clientY, ev);
+  });
+
+  window.addEventListener('mouseup', () => {
+    if (!state.mouseDragging) return;
+    endDrag();
+  });
+
+  function applyViewportMode() {
+    if (isMobileViewport() && state.isVisible) {
+      setSheetVisibility(true);
+      refreshLayout(false);
+    } else {
+      setSheetVisibility(false);
+    }
+  }
+
+  const onResize = () => {
+    if (!isMobileViewport() || !state.isVisible) return;
+    refreshLayout(false);
+  };
+
+  window.addEventListener('resize', onResize);
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', onResize);
+
+  if (MOBILE_SHEET_MEDIA_QUERY.addEventListener) {
+    MOBILE_SHEET_MEDIA_QUERY.addEventListener('change', applyViewportMode);
+  } else if (MOBILE_SHEET_MEDIA_QUERY.addListener) {
+    MOBILE_SHEET_MEDIA_QUERY.addListener(applyViewportMode);
+  }
+
+  applyViewportMode();
+
+  return {
+    show(defaultSnap = 'mid') {
+      state.isVisible = true;
+      if (!isMobileViewport()) return;
+      setSheetVisibility(true);
+      refreshLayout(false);
+      setSnap(defaultSnap, true);
+    },
+    hide() {
+      state.isVisible = false;
+      setSheetVisibility(false);
+    },
+    snapTo(snapName = 'mid', animate = true) {
+      if (!isMobileViewport()) return;
+      if (!state.isVisible) {
+        state.isVisible = true;
+        setSheetVisibility(true);
+        refreshLayout(false);
+      }
+      setSnap(snapName, animate);
+    },
+  };
+}
+
+function createMobileSheetController() {
+  return createDraggableSheetController({
+    sheetId: 'mobile-sheet',
+    handleSelector: '#sheet-handle-toggle',
+    contentSelector: '.sheet-content',
+    translateVar: '--sheet-translate-y',
+    initialVisible: true,
+    collapsedVisible: 26,
+    midRatio: 0.56,
+    minMidVisible: 220,
+  });
+}
+
+function createMobileDirSheetController() {
+  return createDraggableSheetController({
+    sheetId: 'mobile-dir-sheet',
+    handleSelector: '.mobile-dir-handle',
+    contentSelector: '.mobile-dir-content',
+    translateVar: '--dir-sheet-translate-y',
+    initialVisible: false,
+    visibleClass: 'visible',
+    collapsedVisible: 26,
+    midRatio: 0.58,
+    minMidVisible: 240,
+    getMidRatio: sheet => sheet.classList.contains('has-route') ? 0.64 : 0.58,
+  });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  mobileSheetController = createMobileSheetController();
+  mobileDirSheetController = createMobileDirSheetController();
 });
 
 
