@@ -442,15 +442,68 @@
     width: 22px !important; height: 22px !important; border-radius: 50%;
     border: 2.5px solid white; box-shadow: 0 2px 6px rgba(0,0,0,.3);
     cursor: pointer; transition: transform .2s, box-shadow .2s;
+    background: var(--marker-color, #555);
   }
-  .su-marker:hover { transform: scale(1.3); }
-  .su-marker.selected {
-    transform: scale(1.7) !important;
-    border: 3px solid white;
-    box-shadow: 0 0 0 3px rgba(255,255,255,0.7), 0 4px 12px rgba(0,0,0,.45);
+  @media (hover: hover) { .su-marker:hover { transform: scale(1.2); } }
+  .su-pin-wrap {
+    position: relative;
+    width: 34px;
+    height: 56px;
+    pointer-events: none;
   }
+  .su-selected-pin,
+  .su-route-pin {
+    width: 28px !important;
+    height: 42px !important;
+    position: absolute;
+    left: 50%;
+    top: 0;
+    transform: translateX(-50%);
+    filter: drop-shadow(0 6px 10px rgba(0,0,0,.3));
+  }
+  .su-selected-pin::before,
+  .su-route-pin::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 2.5px solid white;
+    background: var(--pin-color, var(--su-green));
+    box-sizing: border-box;
+  }
+  .su-selected-pin::after,
+  .su-route-pin::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 21px;
+    transform: translateX(-50%);
+    width: 0;
+    height: 0;
+    border-left: 7px solid transparent;
+    border-right: 7px solid transparent;
+    border-top: 15px solid var(--pin-color, var(--su-green));
+  }
+  .su-pin-dot {
+    position: absolute;
+    left: 50%;
+    top: 9px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    transform: translateX(-50%);
+    background: white;
+    z-index: 2;
+  }
+  .su-route-pin.origin      { --pin-color: var(--su-green); }
+  .su-route-pin.destination { --pin-color: var(--su-gold);  }
   .su-marker-label {
-    position: absolute; top: 26px; left: 50%;
+    position: absolute;
+    left: 50%;
+    top: 44px;
     transform: translateX(-50%);
     background: white; color: #212529;
     font-family: 'DM Sans', sans-serif;
@@ -733,7 +786,7 @@ const CAMPUS_ROUTING_ENABLED = true; // Graph validated and ready
 const LOCATIONS = [
   // ══ FACILITIES ═══════════════════════════════════════════════════════════════
   { id:1,  name:"Ausejo Hall",                                         short:"Ausejo Hall",                                      category:"facility",  icon:"🏫", lat:9.3123797, lng:123.3066723, desc:"Academic building on the Silliman University campus.",                                                hours:"Mon–Fri 7:30am–5pm",               contact:"N/A" },
-  { id:2,  name:"Science Complex",                                     short:"Science Complex",                                  category:"facility",  icon:"🔬", lat:9.3116025, lng:123.3067123, desc:"Houses science laboratories and lecture rooms for various science programs.",                         hours:"Mon–Fri 7:30am–5pm",               contact:"N/A" },
+  { id:2,  name:"Science Complex",                                     short:"Science Complex",                                  category:"venue",     icon:"🔬", lat:9.3116025, lng:123.3067123, desc:"Houses science laboratories and lecture rooms for various science programs.",                         hours:"Mon–Fri 7:30am–5pm",               contact:"N/A" },
   { id:3,  name:"Silliman Hall",                                       short:"Silliman Hall",                                    category:"facility",  icon:"🏛️", lat:9.31076,   lng:123.30903,  desc:"The historic main building of Silliman University, a national cultural heritage landmark.",        hours:"Open daily",                       contact:"University Info" },
   { id:4,  name:"Ruiz Administrative Hall",                            short:"Ruiz Administrative Hall",                         category:"facility",  icon:"🏢", lat:9.31115,   lng:123.30882,  desc:"Central administrative offices of Silliman University.",                                             hours:"Mon–Fri 8am–5pm",                  contact:"admin@su.edu.ph" },
   { id:5,  name:"Business and Finance Office",                         short:"Business and Finance Office",                      category:"facility",  icon:"💳", lat:9.31118,   lng:123.30894,  desc:"Handles all financial transactions, tuition payments, and university business matters.",             hours:"Mon–Fri 8am–4:30pm",               contact:"N/A" },
@@ -741,11 +794,11 @@ const LOCATIONS = [
   { id:7,  name:"Uytengsu Hall (CED)",                                 short:"Uytengsu Hall",                                    category:"facility",  icon:"🏫", lat:9.31143,   lng:123.30836,  desc:"Home of the College of Education and related departments.",                                          hours:"Mon–Fri 7:30am–5pm",               contact:"N/A" },
   { id:8,  name:"Alumni Hall",                                         short:"Alumni Hall",                                      category:"facility",  icon:"🏛️", lat:9.31145,   lng:123.30797,  desc:"Serves alumni relations and university functions.",                                                  hours:"Mon–Fri 8am–5pm",                  contact:"N/A" },
   { id:9,  name:"Villareal Hall",                                      short:"Villareal Hall",                                   category:"facility",  icon:"🏫", lat:9.3113,    lng:123.3073,   desc:"Academic building on the Silliman University campus.",                                               hours:"Mon–Fri 7:30am–5pm",               contact:"N/A" },
-  { id:10, name:"Home Economics–Nutrition and Dietetics Dept.",        short:"Home Economics–Nutrition and Dietetics Dept.",     category:"facility",  icon:"🍽️", lat:9.3124141, lng:123.3063804,desc:"Department offering programs in home economics, nutrition, and dietetics.",                          hours:"Mon–Fri 7:30am–5pm",               contact:"N/A" },
+  { id:10, name:"Home Economics–Nutrition and Dietetics Dept.",        short:"Home Economics–Nutrition and Dietetics Dept.",     category:"venue",     icon:"🍽️", lat:9.3124141, lng:123.3063804,desc:"Department offering programs in home economics, nutrition, and dietetics.",                          hours:"Mon–Fri 7:30am–5pm",               contact:"N/A" },
   { id:11, name:"Silliman University Pool",                            short:"Silliman University Pool",                         category:"facility",  icon:"🏊", lat:9.31492,   lng:123.30582,  desc:"Swimming pool for PE classes, swim team training, and recreational use.",                          hours:"Mon–Sat 6am–7pm",                  contact:"PE Department" },
   { id:12, name:"Silliman Church",                                     short:"Silliman Church",                                  category:"facility",  icon:"⛪", lat:9.3108,    lng:123.30572,  desc:"The Silliman University Church, central to campus spiritual life.",                               hours:"Open daily",                       contact:"SU Church Office" },
   { id:13, name:"Charles Bachelor Building",                           short:"Charles Bachelor Building",                        category:"facility",  icon:"🏫", lat:9.31171,   lng:123.30837,  desc:"Academic building on the Silliman University campus.",                                               hours:"Mon–Fri 7:30am–5pm",               contact:"N/A" },
-  { id:14, name:"College of Business and Administration Building",     short:"College of Business and Administration Building",  category:"facility",  icon:"📊", lat:9.31279,   lng:123.30711,  desc:"Houses the College of Business and Administration programs and faculty offices.",                  hours:"Mon–Fri 7:30am–5pm",               contact:"N/A" },
+  { id:14, name:"College of Business and Administration Building",     short:"College of Business and Administration Building",  category:"venue",     icon:"📊", lat:9.31279,   lng:123.30711,  desc:"Houses the College of Business and Administration programs and faculty offices.",                  hours:"Mon–Fri 7:30am–5pm",               contact:"N/A" },
   { id:15, name:"Katipunan Hall",                                      short:"Katipunan Hall",                                   category:"facility",  icon:"🏫", lat:9.31236,   lng:123.30719,  desc:"Academic building on the Silliman University campus.",                                               hours:"Mon–Fri 7:30am–5pm",               contact:"N/A" },
   { id:16, name:"Ethel Chapman Hall",                                  short:"Ethel Chapman Hall",                               category:"facility",  icon:"🏫", lat:9.31294,   lng:123.30643,  desc:"Academic building on the Silliman University campus.",                                               hours:"Mon–Fri 7:30am–5pm",               contact:"N/A" },
   { id:17, name:"Chapel of the Evangel",                               short:"Chapel of the Evangel",                            category:"facility",  icon:"⛪", lat:9.31347,   lng:123.30698,  desc:"Chapel on the Silliman University campus.",                                                         hours:"N/A",                              contact:"N/A" },
@@ -790,6 +843,7 @@ const CAT_COLORS = {
 let map = null;
 let markers = {};          // { locId: L.marker }
 let routeLayer = null;
+let routeEndpointMarkers = [];
 let userMarker = null;
 let watchId = null;        // geolocation watchPosition handle (live tracking)
 let selectedLocation = null;
@@ -834,19 +888,13 @@ function addAllMarkers() {
 
   filtered.forEach(loc => {
     const isSelected = selectedLocation?.id === loc.id;
-    const icon = L.divIcon({
-      className: '',
-      html: `<div style="position:relative;display:inline-block;">
-               <div class="su-marker${isSelected ? ' selected' : ''}"
-                    style="background:${CAT_COLORS[loc.category] || '#555'}"></div>
-               ${isSelected ? `<div class="su-marker-label">${loc.short}</div>` : ''}
-             </div>`,
-      iconSize: [22, 22],
-      iconAnchor: [11, 11],
-    });
-    const marker = L.marker([loc.lat, loc.lng], { icon, title: loc.short })
+    const marker = L.marker([loc.lat, loc.lng], {
+      icon: isSelected ? createSelectedLocationMarkerIcon(loc) : createDefaultLocationMarkerIcon(loc),
+      title: loc.short,
+    })
       .addTo(map)
       .on('click', () => selectLocation(loc));
+    marker.setZIndexOffset(isSelected ? 1200 : 0);
     markers[loc.id] = marker;
   });
 }
@@ -855,36 +903,113 @@ function addAllMarkers() {
 /* ════════════════════════════════════════════════════════
    DETAIL PANEL
    ════════════════════════════════════════════════════════ */
+function getMarkerColor(loc) {
+  return CAT_COLORS[loc.category] || '#555';
+}
+
+function createDefaultLocationMarkerIcon(loc) {
+  return L.divIcon({
+    className: '',
+    html: `<div class="su-marker" style="--marker-color:${getMarkerColor(loc)}"></div>`,
+    iconSize: [22, 22],
+    iconAnchor: [11, 11],
+  });
+}
+
+function createSelectedLocationMarkerIcon(loc) {
+  return L.divIcon({
+    className: '',
+    html: `
+      <div class="su-pin-wrap">
+        <div class="su-selected-pin" style="--pin-color:${getMarkerColor(loc)}"><span class="su-pin-dot"></span></div>
+        <div class="su-marker-label">${loc.short}</div>
+      </div>`,
+    iconSize: [34, 56],
+    iconAnchor: [17, 36],
+  });
+}
+
+function createRouteEndpointMarkerIcon(type) {
+  const klass = type === 'origin' ? 'origin' : 'destination';
+  return L.divIcon({
+    className: '',
+    html: `<div class="su-pin-wrap"><div class="su-route-pin ${klass}"><span class="su-pin-dot"></span></div></div>`,
+    iconSize: [34, 46],
+    iconAnchor: [17, 36],
+  });
+}
+
+function setLocationMarkerState(loc, isSelected) {
+  const marker = loc ? markers[loc.id] : null;
+  if (!marker) return;
+  marker.setIcon(isSelected ? createSelectedLocationMarkerIcon(loc) : createDefaultLocationMarkerIcon(loc));
+  marker.setZIndexOffset(isSelected ? 1200 : 0);
+}
+
+function clearRouteEndpointMarkers() {
+  routeEndpointMarkers.forEach(m => map.removeLayer(m));
+  routeEndpointMarkers = [];
+}
+
+function showRouteEndpointMarkers(origin, dest) {
+  clearRouteEndpointMarkers();
+  if (!origin || !dest) return;
+
+  const originMarker = L.marker([origin.lat, origin.lng], {
+    icon: createRouteEndpointMarkerIcon('origin'),
+    interactive: false,
+    keyboard: false,
+    zIndexOffset: 2500,
+  }).addTo(map);
+
+  const destMarker = L.marker([dest.lat, dest.lng], {
+    icon: createRouteEndpointMarkerIcon('destination'),
+    interactive: false,
+    keyboard: false,
+    zIndexOffset: 2500,
+  }).addTo(map);
+
+  routeEndpointMarkers = [originMarker, destMarker];
+}
+
+function resetActiveRouteUI() {
+  const hasActiveRoute = !!routeLayer || routeEndpointMarkers.length > 0;
+  if (!hasActiveRoute) return;
+
+  clearRouteLayer();
+
+  const desktopSteps = document.getElementById('steps-container');
+  if (desktopSteps) desktopSteps.innerHTML = '';
+  const desktopBadge = document.getElementById('route-mode-badge');
+  if (desktopBadge) {
+    desktopBadge.className = '';
+    desktopBadge.textContent = '';
+  }
+
+  const mobileSteps = document.getElementById('mobile-steps-container');
+  if (mobileSteps) mobileSteps.innerHTML = '';
+  const mobileBadge = document.getElementById('mobile-route-badge');
+  if (mobileBadge) {
+    mobileBadge.style.display = 'none';
+    mobileBadge.textContent = '';
+  }
+
+  const mobileDirSheet = document.getElementById('mobile-dir-sheet');
+  if (mobileDirSheet) mobileDirSheet.classList.remove('has-route');
+}
+
 function selectLocation(loc) {
-  // Unhighlight the previously selected marker
-  if (selectedLocation && markers[selectedLocation.id]) {
-    const prevIcon = L.divIcon({
-      className: '',
-      html: `<div style="position:relative;display:inline-block;">
-               <div class="su-marker" style="background:${CAT_COLORS[selectedLocation.category] || '#555'}"></div>
-             </div>`,
-      iconSize: [22, 22],
-      iconAnchor: [11, 11],
-    });
-    markers[selectedLocation.id].setIcon(prevIcon);
+  const isDifferentSelection = !selectedLocation || selectedLocation.id !== loc.id;
+  if (isDifferentSelection && (routeLayer || routeEndpointMarkers.length)) {
+    resetActiveRouteUI();
+  }
+
+  if (selectedLocation && selectedLocation.id !== loc.id) {
+    setLocationMarkerState(selectedLocation, false);
   }
 
   selectedLocation = loc;
-
-  // Highlight the new selected marker
-  if (markers[loc.id]) {
-    const selIcon = L.divIcon({
-      className: '',
-      html: `<div style="position:relative;display:inline-block;">
-               <div class="su-marker selected" style="background:${CAT_COLORS[loc.category] || '#555'}"></div>
-               <div class="su-marker-label">${loc.short}</div>
-             </div>`,
-      iconSize: [22, 22],
-      iconAnchor: [11, 11],
-    });
-    markers[loc.id].setIcon(selIcon);
-    markers[loc.id].setZIndexOffset(1000);
-  }
+  setLocationMarkerState(loc, true);
 
   document.getElementById('detail-icon').textContent     = loc.icon;
   document.getElementById('detail-title').textContent    = loc.name;
@@ -909,19 +1034,7 @@ function closeDetail() {
   const panel = document.getElementById('detail-panel');
   panel.classList.remove('visible');
   setTimeout(() => { panel.style.display = 'none'; }, 250);
-  // Reset the marker back to normal
-  if (selectedLocation && markers[selectedLocation.id]) {
-    const resetIcon = L.divIcon({
-      className: '',
-      html: `<div style="position:relative;display:inline-block;">
-               <div class="su-marker" style="background:${CAT_COLORS[selectedLocation.category] || '#555'}"></div>
-             </div>`,
-      iconSize: [22, 22],
-      iconAnchor: [11, 11],
-    });
-    markers[selectedLocation.id].setIcon(resetIcon);
-    markers[selectedLocation.id].setZIndexOffset(0);
-  }
+  if (selectedLocation) setLocationMarkerState(selectedLocation, false);
   selectedLocation = null;
 }
 
@@ -958,6 +1071,7 @@ function populateDirectionSelects() {
 
 function clearRouteLayer() {
   if (routeLayer) { map.removeLayer(routeLayer); routeLayer = null; }
+  clearRouteEndpointMarkers();
 }
 
 
@@ -1154,7 +1268,7 @@ function campusRoute(origin, dest) {
     return { text: nodes[id].label || `Continue to waypoint`, dist: formatDist(d) };
   });
 
-  drawRoute(latlngs, steps, formatDist(totalDist), formatDuration(totalDist / 1.2), 'campus');
+  drawRoute(latlngs, steps, formatDist(totalDist), formatDuration(totalDist / 1.2), 'campus', origin, dest);
 }
 
 
@@ -1186,7 +1300,7 @@ async function osrmRoute(origin, dest) {
       dist: formatDist(s.distance),
     }));
 
-    drawRoute(coords, steps, formatDist(route.distance), formatDuration(route.duration), 'osrm');
+    drawRoute(coords, steps, formatDist(route.distance), formatDuration(route.duration), 'osrm', origin, dest);
   } catch (err) {
     showToast('Network error. Check your internet connection.');
   }
@@ -1196,12 +1310,13 @@ async function osrmRoute(origin, dest) {
 /* ════════════════════════════════════════════════════════
    DRAW ROUTE  (shared by both engines)
    ════════════════════════════════════════════════════════ */
-function drawRoute(latlngs, steps, dist, duration, mode) {
+function drawRoute(latlngs, steps, dist, duration, mode, origin, dest) {
   clearRouteLayer();
 
   routeLayer = L.polyline(latlngs, {
     color: '#1B4D2E', weight: 5, opacity: 0.85, lineJoin: 'round',
   }).addTo(map);
+  showRouteEndpointMarkers(origin, dest);
 
   map.fitBounds(routeLayer.getBounds(), { padding: [40, 40] });
 
@@ -1560,7 +1675,7 @@ function campusRouteMobile(origin, dest) {
     const d = haversineM(nodes[path[i]], nodes[id]);
     return { text: nodes[id].label || 'Continue to waypoint', dist: formatDist(d) };
   });
-  drawMobileRoute(latlngs, steps, formatDist(totalDist), formatDuration(totalDist / 1.2), 'campus');
+  drawMobileRoute(latlngs, steps, formatDist(totalDist), formatDuration(totalDist / 1.2), 'campus', origin, dest);
 }
 
 async function osrmRouteMobile(origin, dest) {
@@ -1574,15 +1689,16 @@ async function osrmRouteMobile(origin, dest) {
     const leg    = route.legs[0];
     const coords = route.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
     const steps  = leg.steps.map(s => ({ text: s.maneuver.instruction || s.name || 'Continue', dist: formatDist(s.distance) }));
-    drawMobileRoute(coords, steps, formatDist(route.distance), formatDuration(route.duration), 'osrm');
+    drawMobileRoute(coords, steps, formatDist(route.distance), formatDuration(route.duration), 'osrm', origin, dest);
   } catch (err) {
     showToast('Network error. Check your internet connection.');
   }
 }
 
-function drawMobileRoute(latlngs, steps, dist, duration, mode) {
+function drawMobileRoute(latlngs, steps, dist, duration, mode, origin, dest) {
   clearRouteLayer();
   routeLayer = L.polyline(latlngs, { color: '#1B4D2E', weight: 5, opacity: 0.85, lineJoin: 'round' }).addTo(map);
+  showRouteEndpointMarkers(origin, dest);
   map.fitBounds(routeLayer.getBounds(), { padding: [60, 20] });
   document.getElementById('mobile-dir-sheet').classList.add('has-route');
   if (isMobileViewport()) mobileDirSheetController?.show('mid');
