@@ -777,6 +777,12 @@
 /* ─── CONFIG ─── */
 const SU_CENTER = { lat: 9.3067, lng: 123.3067 };
 const CAMPUS_ROUTING_ENABLED = true; // Graph validated and ready
+const CAMPUS_ROUTING_CONFIG = {
+  mergeToleranceM: 4.5,        // Merge nearly-overlapping path nodes (3-5m range)
+  autoConnectToleranceM: 5.0,  // Auto-connect tiny endpoint gaps
+  buildingSnapToleranceM: 35,  // Prefer exact building node when close
+  fallbackSnapToleranceM: 120, // Otherwise use nearest connected path node
+};
 
 /* ─── LOCATION DATA ─── */
 /* Removed (incorrect coordinates): Medical Center, Ellinwood-Malvar, Registrar,
@@ -848,6 +854,7 @@ let userMarker = null;
 let watchId = null;        // geolocation watchPosition handle (live tracking)
 let selectedLocation = null;
 let activeCategory = 'all';
+let normalizedCampusGraph = null;
 
 
 /* ════════════════════════════════════════════════════════
@@ -1152,58 +1159,252 @@ function haversineM(a, b) {
   return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1-s));
 }
 
-/* Find the graph node closest to a given {lat,lng} point.
-   If preferBuilding is true, checks building nodes (b##) first
-   so that known entrances snap directly to their own node. */
-function nearestNode(point, preferBuilding = false) {
-  const nodes = CAMPUS_GRAPH.nodes;
-  let best = null, bestDist = Infinity;
+/* Build a normalized runtime graph:
+   - merges near-overlapping path nodes
+   - deduplicates edges
+   - auto-connects very small endpoint gaps */
+function buildNormalizedCampusGraph(sourceGraph) {
+  const sourceNodes = sourceGraph?.nodes || {};
+  const sourceEdges = Array.isArray(sourceGraph?.edges) ? sourceGraph.edges : [];
+  const pathIds = Object.keys(sourceNodes).filter(id => id.startsWith('n'));
+  const buildingIds = Object.keys(sourceNodes).filter(id => id.startsWith('b'));
 
-  // If preferBuilding, check b-nodes first with a tight tolerance (30m)
+  const parent = {};
+  const rank = {};
+  pathIds.forEach(id => { parent[id] = id; rank[id] = 0; });
+
+  const find = (id) => {
+    let root = id;
+    while (parent[root] !== root) root = parent[root];
+    while (parent[id] !== id) {
+      const p = parent[id];
+      parent[id] = root;
+      id = p;
+    }
+    return root;
+  };
+
+  const union = (a, b) => {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra === rb) return;
+    if (rank[ra] < rank[rb]) parent[ra] = rb;
+    else if (rank[rb] < rank[ra]) parent[rb] = ra;
+    else { parent[rb] = ra; rank[ra] += 1; }
+  };
+
+  for (let i = 0; i < pathIds.length; i++) {
+    for (let j = i + 1; j < pathIds.length; j++) {
+      const a = pathIds[i];
+      const b = pathIds[j];
+      const d = haversineM(sourceNodes[a], sourceNodes[b]);
+      if (d <= CAMPUS_ROUTING_CONFIG.mergeToleranceM) union(a, b);
+    }
+  }
+
+  const clustersByRoot = {};
+  pathIds.forEach(id => {
+    const root = find(id);
+    if (!clustersByRoot[root]) clustersByRoot[root] = [];
+    clustersByRoot[root].push(id);
+  });
+
+  const alias = {};
+  const nodes = {};
+  const nodeMeta = {};
+
+  Object.values(clustersByRoot).forEach(cluster => {
+    const sorted = [...cluster].sort();
+    const canonicalId = sorted[0];
+    const lat = cluster.reduce((s, id) => s + sourceNodes[id].lat, 0) / cluster.length;
+    const lng = cluster.reduce((s, id) => s + sourceNodes[id].lng, 0) / cluster.length;
+    nodes[canonicalId] = { lat, lng, label: sourceNodes[canonicalId].label };
+    nodeMeta[canonicalId] = { type: 'path', mergedFrom: sorted };
+    cluster.forEach(id => { alias[id] = canonicalId; });
+  });
+
+  buildingIds.forEach(id => {
+    nodes[id] = { ...sourceNodes[id] };
+    nodeMeta[id] = { type: 'building' };
+    alias[id] = id;
+  });
+
+  const edgeMap = new Map();
+  const addEdge = (from, to, reason = 'source') => {
+    if (!nodes[from] || !nodes[to] || from === to) return;
+    const key = `${from}|${to}`;
+    const dist = Math.max(0.1, haversineM(nodes[from], nodes[to]));
+    const existing = edgeMap.get(key);
+    if (!existing || dist < existing.dist) {
+      edgeMap.set(key, { from, to, dist, reason });
+    }
+  };
+
+  sourceEdges.forEach(edge => {
+    const from = alias[edge.from] || edge.from;
+    const to = alias[edge.to] || edge.to;
+    if (!nodes[from] || !nodes[to]) return;
+    addEdge(from, to, 'source');
+    addEdge(to, from, 'source-mirror');
+  });
+
+  const normalizedPathIds = Object.entries(nodeMeta)
+    .filter(([, meta]) => meta.type === 'path')
+    .map(([id]) => id);
+
+  for (let i = 0; i < normalizedPathIds.length; i++) {
+    for (let j = i + 1; j < normalizedPathIds.length; j++) {
+      const a = normalizedPathIds[i];
+      const b = normalizedPathIds[j];
+      const d = haversineM(nodes[a], nodes[b]);
+      if (d <= CAMPUS_ROUTING_CONFIG.autoConnectToleranceM) {
+        addEdge(a, b, 'auto-connect');
+        addEdge(b, a, 'auto-connect');
+      }
+    }
+  }
+
+  const edges = [...edgeMap.values()];
+  const adj = {};
+  const degree = {};
+  const pathDegree = {};
+  Object.keys(nodes).forEach(id => { adj[id] = []; degree[id] = 0; });
+  Object.keys(nodes).forEach(id => { pathDegree[id] = 0; });
+  edges.forEach(edge => {
+    if (!adj[edge.from]) adj[edge.from] = [];
+    adj[edge.from].push({ to: edge.to, dist: edge.dist });
+    degree[edge.from] += 1;
+    if (edge.from.startsWith('n') && edge.to.startsWith('n')) pathDegree[edge.from] += 1;
+  });
+
+  const pathComponentByNode = {};
+  const pathComponentSize = {};
+  let compIndex = 0;
+
+  Object.keys(nodes)
+    .filter(id => id.startsWith('n'))
+    .forEach(id => {
+      if (pathComponentByNode[id]) return;
+      compIndex += 1;
+      const key = `comp-${compIndex}`;
+      const queue = [id];
+      const members = [];
+      pathComponentByNode[id] = key;
+
+      while (queue.length) {
+        const curr = queue.shift();
+        members.push(curr);
+        (adj[curr] || []).forEach(({ to }) => {
+          if (!to.startsWith('n')) return;
+          if (pathComponentByNode[to]) return;
+          pathComponentByNode[to] = key;
+          queue.push(to);
+        });
+      }
+
+      pathComponentSize[key] = members.length;
+    });
+
+  const buildingReachableToMainPath = {};
+  buildingIds.forEach(id => {
+    const linkedPathNodes = (adj[id] || []).map(e => e.to).filter(to => to.startsWith('n'));
+    buildingReachableToMainPath[id] = linkedPathNodes.some(pathId => {
+      const comp = pathComponentByNode[pathId];
+      return comp && (pathComponentSize[comp] || 0) > 1;
+    });
+  });
+
+  return {
+    nodes,
+    edges,
+    adj,
+    degree,
+    pathDegree,
+    pathComponentByNode,
+    pathComponentSize,
+    buildingReachableToMainPath,
+    nodeMeta,
+  };
+}
+
+function getCampusGraph() {
+  if (!normalizedCampusGraph) normalizedCampusGraph = buildNormalizedCampusGraph(CAMPUS_GRAPH);
+  return normalizedCampusGraph;
+}
+
+/* Find the closest routable node to a {lat,lng} point. */
+function nearestNode(point, preferBuilding = false, graph = getCampusGraph()) {
+  const nodes = graph.nodes;
+  const degree = graph.degree || {};
+  const pathDegree = graph.pathDegree || {};
+  const pathComponentByNode = graph.pathComponentByNode || {};
+  const pathComponentSize = graph.pathComponentSize || {};
+  const buildingReachableToMainPath = graph.buildingReachableToMainPath || {};
+  let best = null;
+  let bestDist = Infinity;
+
   if (preferBuilding) {
     for (const [id, node] of Object.entries(nodes)) {
       if (!id.startsWith('b')) continue;
+      if ((degree[id] ?? 0) === 0) continue;
+      if (!buildingReachableToMainPath[id]) continue;
       const d = haversineM(point, node);
-      if (d < 30 && d < bestDist) { bestDist = d; best = id; }
+      if (d <= CAMPUS_ROUTING_CONFIG.buildingSnapToleranceM && d < bestDist) {
+        best = id;
+        bestDist = d;
+      }
     }
     if (best) return best;
   }
 
-  // Fall back to nearest of any node
   for (const [id, node] of Object.entries(nodes)) {
+    if (!id.startsWith('n')) continue;
+    if ((pathDegree[id] ?? 0) === 0) continue;
+    const comp = pathComponentByNode[id];
+    if (!comp || (pathComponentSize[comp] ?? 0) <= 1) continue;
     const d = haversineM(point, node);
-    if (d < bestDist) { bestDist = d; best = id; }
+    if (d < bestDist) {
+      best = id;
+      bestDist = d;
+    }
   }
+  if (best && bestDist <= CAMPUS_ROUTING_CONFIG.fallbackSnapToleranceM) return best;
+
+  for (const [id, node] of Object.entries(nodes)) {
+    if ((degree[id] ?? 0) === 0) continue;
+    const d = haversineM(point, node);
+    if (d < bestDist) {
+      best = id;
+      bestDist = d;
+    }
+  }
+
   return best;
 }
 
 /* A* pathfinding — returns array of node IDs or null if no path */
-function aStar(startId, goalId) {
-  const nodes = CAMPUS_GRAPH.nodes;
-
-  // Build adjacency list from edge list
-  const adj = {};
-  for (const id of Object.keys(nodes)) adj[id] = [];
-  for (const edge of CAMPUS_GRAPH.edges) {
-    adj[edge.from].push({ to: edge.to, dist: edge.dist });
-  }
+function aStar(startId, goalId, graph = getCampusGraph()) {
+  const nodes = graph.nodes;
+  const adj = graph.adj || {};
+  if (!nodes[startId] || !nodes[goalId]) return null;
 
   const h = id => haversineM(nodes[id], nodes[goalId]); // heuristic
 
-  const open   = new Set([startId]);
+  const open = new Set([startId]);
   const cameFrom = {};
-  const gScore  = { [startId]: 0 };
-  const fScore  = { [startId]: h(startId) };
+  const gScore = { [startId]: 0 };
+  const fScore = { [startId]: h(startId) };
 
   while (open.size > 0) {
-    // Node in open with lowest fScore
     let current = [...open].reduce((a, b) =>
       (fScore[a] ?? Infinity) < (fScore[b] ?? Infinity) ? a : b);
 
     if (current === goalId) {
-      // Reconstruct path
       const path = [current];
-      while (cameFrom[current]) { current = cameFrom[current]; path.unshift(current); }
+      while (cameFrom[current]) {
+        current = cameFrom[current];
+        path.unshift(current);
+      }
       return path;
     }
 
@@ -1212,17 +1413,18 @@ function aStar(startId, goalId) {
       const tentative = (gScore[current] ?? Infinity) + dist;
       if (tentative < (gScore[to] ?? Infinity)) {
         cameFrom[to] = current;
-        gScore[to]   = tentative;
-        fScore[to]   = tentative + h(to);
+        gScore[to] = tentative;
+        fScore[to] = tentative + h(to);
         open.add(to);
       }
     }
   }
-  return null; // no path found
+  return null;
 }
 
 function campusRoute(origin, dest) {
-  const nodes = CAMPUS_GRAPH.nodes;
+  const graph = getCampusGraph();
+  const nodes = graph.nodes;
 
   if (!nodes || Object.keys(nodes).length === 0) {
     showToast('Campus graph not loaded. Using road directions.');
@@ -1230,8 +1432,8 @@ function campusRoute(origin, dest) {
     return;
   }
 
-  const originNode = nearestNode(origin, true);
-  const destNode   = nearestNode(dest,   true);
+  const originNode = nearestNode(origin, true, graph);
+  const destNode   = nearestNode(dest,   true, graph);
 
   if (!originNode || !destNode) {
     showToast('Could not find nearby path. Using road directions.');
@@ -1244,7 +1446,7 @@ function campusRoute(origin, dest) {
     return;
   }
 
-  const path = aStar(originNode, destNode);
+  const path = aStar(originNode, destNode, graph);
 
   if (!path || path.length < 2) {
     // Disconnected graph component — fall back to OSRM
@@ -1651,19 +1853,20 @@ function selectRouterMobile(origin, dest) {
 }
 
 function campusRouteMobile(origin, dest) {
-  const nodes = CAMPUS_GRAPH.nodes;
+  const graph = getCampusGraph();
+  const nodes = graph.nodes;
   if (!nodes || Object.keys(nodes).length === 0) {
     showToast('Campus graph not loaded. Using road directions.');
     osrmRouteMobile(origin, dest); return;
   }
-  const originNode = nearestNode(origin, true);
-  const destNode   = nearestNode(dest,   true);
+  const originNode = nearestNode(origin, true, graph);
+  const destNode   = nearestNode(dest,   true, graph);
   if (!originNode || !destNode) {
     showToast('Could not find nearby path. Using road directions.');
     osrmRouteMobile(origin, dest); return;
   }
   if (originNode === destNode) { showToast('Origin and destination are on the same node.'); return; }
-  const path = aStar(originNode, destNode);
+  const path = aStar(originNode, destNode, graph);
   if (!path || path.length < 2) {
     showToast('No campus path found. Using road directions.');
     osrmRouteMobile(origin, dest); return;
@@ -2279,6 +2482,7 @@ const CAMPUS_GRAPH = {
    BOOT
    ════════════════════════════════════════════════════════ */
 function init() {
+  normalizedCampusGraph = buildNormalizedCampusGraph(CAMPUS_GRAPH);
   renderCategories('category-scroll');
   renderCategories('mobile-category-scroll');
   renderLocations(LOCATIONS, 'locations-list');
